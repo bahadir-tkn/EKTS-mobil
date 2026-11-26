@@ -43,6 +43,7 @@ export function PromptDialog({
   initial,
   numeric,
   multiline,
+  types,
   okLabel,
   cancelLabel,
   onOk,
@@ -53,12 +54,15 @@ export function PromptDialog({
   initial: string;
   numeric?: boolean;
   multiline?: boolean;
+  /** A "Kayıt türü" list under the name, as in the save dialog. */
+  types?: { label: string; options: string[] };
   okLabel: string;
   cancelLabel: string;
-  onOk: (v: string) => void;
+  onOk: (v: string, type: number) => void;
   onCancel: () => void;
 }) {
   const [v, setV] = useState(initial);
+  const [type, setType] = useState(0);
   const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   useEffect(() => {
     ref.current?.select();
@@ -69,7 +73,7 @@ export function PromptDialog({
         className="dialog"
         onSubmit={(e) => {
           e.preventDefault();
-          onOk(v);
+          onOk(v, type);
         }}
       >
         <div className="dialog-title">{title}</div>
@@ -83,13 +87,25 @@ export function PromptDialog({
             autoFocus
             value={v}
             inputMode={numeric ? 'numeric' : 'text'}
-            autoCapitalize={numeric ? 'off' : 'characters'}
+            autoCapitalize={numeric || types ? 'off' : 'characters'}
             autoComplete="off"
             spellCheck={false}
             onChange={(e) => setV(numeric ? e.target.value.replace(/\D/g, '') : e.target.value)}
           />
           )}
         </label>
+        {types && (
+          <label className="dialog-field">
+            <span>{types.label}</span>
+            <select value={type} onChange={(e) => setType(Number(e.target.value))}>
+              {types.options.map((o, i) => (
+                <option key={o} value={i}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="dialog-buttons">
           <button type="submit" className="btn primary">
             {okLabel}

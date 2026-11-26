@@ -420,6 +420,7 @@ export const MOBILE: Record<string, { tr: string; en: string }> = {
   relayPick: { tr: 'Kontağın ait olduğu röle', en: 'Relay of this contact' },
   noRelays: { tr: 'Devrede kontaktör veya zaman rölesi yok.', en: 'There is no contactor or time relay in the circuit.' },
   saveImage: { tr: 'Resim Olarak Kaydet', en: 'Save as Image' },
+  fileType: { tr: 'Kayıt türü', en: 'Save as type' },
   holdHint: {
     tr: 'Düğmeyi basılı bırakmak için parmağınızı yarım saniye tutun (bilgisayardaki sağ tık).',
     en: 'Hold for half a second to latch a button (right click on the desktop).',

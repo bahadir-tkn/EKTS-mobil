@@ -12,6 +12,7 @@ import { Canvas, type CanvasHandle } from './ui/Canvas';
 import { MenuBar, StatusBar, Toolbar, type Menu, type MenuItem } from './ui/Chrome';
 import { ChoiceDialog, ContextMenu, MessageBox, PromptDialog } from './ui/Dialogs';
 import { Library } from './ui/Library';
+import { exportImage, IMAGE_FORMATS, type ImageFormat } from './ui/exportImage';
 import { caption, type Lang } from './ui/strings';
 import { EXAMPLES } from './ui/examples';
 import { History } from './ui/history';
@@ -21,7 +22,16 @@ const AUTOSAVE_KEY = 'ekts-mobil:autosave:v2';
 
 type Dialog =
   | { kind: 'message'; title: string; text: string; icon?: 'error' | 'question' | 'info'; buttons: { label: string; onClick: () => void; primary?: boolean }[] }
-  | { kind: 'prompt'; title: string; label: string; initial: string; numeric?: boolean; multiline?: boolean; onOk: (v: string) => void }
+  | {
+      kind: 'prompt';
+      title: string;
+      label: string;
+      initial: string;
+      numeric?: boolean;
+      multiline?: boolean;
+      types?: { label: string; options: string[] };
+      onOk: (v: string, type: number) => void;
+    }
   | { kind: 'choice'; title: string; options: string[]; current: string; onPick: (v: string) => void }
   | { kind: 'context'; x: number; y: number; items: MenuItem[] };
 
@@ -130,6 +140,16 @@ export default function App() {
       setDialog({ kind: 'message', title: 'EKTS', text: String((e as Error).message), icon: 'error', buttons: [{ label: t('ok'), primary: true, onClick: () => setDialog(null) }] });
       return false;
     }
+  };
+
+  /** pnlMain_SaveImage: the picture is written, the circuit's own file name stays. */
+  const saveImage = (name: string, format: ImageFormat) => {
+    const base = name.replace(/\.(esc|bmp|gif|jpe?g|png)$/i, '');
+    exportImage(doc, lang, format)
+      .then((blob) => download(blob, `${base}.${format}`, blob.type))
+      .catch((e) =>
+        setDialog({ kind: 'message', title: 'EKTS', text: String((e as Error).message), icon: 'error', buttons: [{ label: t('ok'), primary: true, onClick: () => setDialog(null) }] }),
+      );
   };
 
   /** pnlMain_New's question before throwing the current circuit away. */
@@ -432,9 +452,14 @@ export default function App() {
               title: t('mnuFileSaveAs'),
               label: t('name'),
               initial: displayName.replace(/\.esc$/i, ''),
-              onOk: (v) => {
+              // The original's Save As filter: EKTS files or one of four picture formats.
+              types: { label: t('fileType'), options: ['EKTS files (*.esc)', ...IMAGE_FORMATS.map((f) => f.label)] },
+              onOk: (v, type) => {
                 setDialog(null);
-                if (v.trim()) saveAs(v.trim());
+                const name = v.trim();
+                if (!name) return;
+                if (type === 0) saveAs(name);
+                else saveImage(name, IMAGE_FORMATS[type - 1].format);
               },
             }),
         },
@@ -627,6 +652,7 @@ export default function App() {
           initial={dialog.initial}
           numeric={dialog.numeric}
           multiline={dialog.multiline}
+          types={dialog.types}
           okLabel={t('ok')}
           cancelLabel={t('cancel')}
           onOk={dialog.onOk}
