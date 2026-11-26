@@ -76,6 +76,7 @@ export function Library({ lang, onAdd, onClose }: { lang: Lang; onAdd: (t: Eleme
             </button>
           </>
         )}
+        {!selected && <span className="lib-hint">{caption('libHint', lang)}</span>}
       </div>
       <div className="lib-tree" role="tree">
         {groups.map((g) => {

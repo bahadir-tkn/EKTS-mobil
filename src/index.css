@@ -736,3 +736,14 @@ button {
     height: 72px;
   }
 }
+
+/* The preview is empty until an element is picked, as in the original; on a
+   phone the empty box needs a word of explanation. */
+.lib-hint {
+  padding: 0 16px;
+  max-width: 340px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #6d6d6d;
+}

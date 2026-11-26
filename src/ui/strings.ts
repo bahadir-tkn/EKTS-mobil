@@ -814,6 +814,10 @@ export const MOBILE: Record<string, { tr: string; en: string }> = {
   relayPick: { tr: 'Kontağın ait olduğu röle', en: 'Relay of this contact' },
   noRelays: { tr: 'Devrede kontaktör veya zaman rölesi yok.', en: 'There is no contactor or time relay in the circuit.' },
   saveImage: { tr: 'Resim Olarak Kaydet', en: 'Save as Image' },
+  libHint: {
+    tr: 'Önizleme için aşağıdaki listeden bir eleman seçin. Çizime eklemek için Ekle düğmesine basın veya elemana iki kez dokunun.',
+    en: 'Pick an element below to preview it. Tap Add, or tap the element twice, to put it on the drawing.',
+  },
   fileType: { tr: 'Kayıt türü', en: 'Save as type' },
   splashNote: { tr: 'EKTS Mobil: masaüstü programın telefon ve tablet uyarlaması. Kapatmak için dokunun.', en: 'EKTS Mobil: the desktop program adapted for phones and tablets. Tap to close.' },
   pages: { tr: 'sayfa', en: 'pages' },
