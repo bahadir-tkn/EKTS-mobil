@@ -199,7 +199,20 @@ function numbers(v: unknown): number[] {
   return Array.isArray(v) ? v.map(Number) : [];
 }
 
+/** System.Drawing.KnownColor → ARGB for the lamp colors the original offers. */
+const KNOWN_COLOR_ARGB: Record<number, number> = {
+  141: 0xffff0000 | 0, // Red
+  37: 0xff0000ff | 0, // Blue
+  79: 0xff008000 | 0, // Green
+  107: 0xffff00ff | 0, // Magenta
+  166: 0xffffff00 | 0, // Yellow
+};
+
+/** System.Drawing.Color: an ARGB value (state 2) or a known color (state 1). */
 function colorValue(v: unknown): number {
   const c = v as NrbfObject;
-  return Number(c?.value ?? 0);
+  const state = Number(c?.state ?? 0);
+  if (state & 2) return Number(c?.value ?? 0) | 0;
+  if (state & 1) return KNOWN_COLOR_ARGB[Number(c?.knownColor ?? 0)] ?? 0;
+  return 0;
 }
