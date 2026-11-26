@@ -1,0 +1,75 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: var(--font-sans);
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+.font-mono-tech {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes rotor-cw {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rotor-ccw {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes fault-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.animate-rotor-cw {
+  animation: rotor-cw 0.9s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-rotor-ccw {
+  animation: rotor-ccw 0.9s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-fault-dash {
+  animation: fault-dash 0.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rotor-cw,
+  .animate-rotor-ccw,
+  .animate-fault-dash {
+    animation: none;
+  }
+}
