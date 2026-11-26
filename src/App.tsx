@@ -1,697 +1,550 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SchematicCanvas } from './components/Canvas/SchematicCanvas';
-import { ComponentDrawer } from './components/UI/ComponentDrawer';
-import { PresetsModal } from './components/UI/PresetsModal';
-import { PropertyBar } from './components/UI/PropertyBar';
-import { ShortCircuitBanner } from './components/UI/ShortCircuitBanner';
-import { SimulationBar } from './components/UI/SimulationBar';
-import { TopBar } from './components/UI/TopBar';
-import {
-  COMPONENT_DEFINITIONS,
-  generateNextLabel,
-  snapToGrid,
-} from './data/components';
-import { PRESET_CIRCUITS, cloneCircuit } from './data/presets';
-import {
-  createEmptyInteractionState,
-  createInitialSimulationState,
-  normalizeLabel,
-  stepSimulation,
-} from './engine/simulator';
-import type {
-  CircuitComponent,
-  CircuitDocument,
-  ComponentType,
-  LampColor,
-  Rotation,
-  SavedCircuitSlot,
-  SimulationState,
-  UserInteractionState,
-  Wire,
-  WireEndpoint,
-} from './types/circuit';
-import {
-  deleteCircuitSlot,
-  loadActiveCircuitDraft,
-  loadSavedSlots,
-  saveActiveCircuitDraft,
-  saveCircuitSlot,
-} from './utils/storage';
+/**
+ * EKTS Mobil main window: menu bar, toolbar, drawing panel, library window
+ * and status bar, laid out like the desktop program on a phone screen.
+ */
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { CircuitDocument, DElement, LAMP_COLORS, isContact, isTimer } from './ekts/document';
+import { Simulator, SIM_MESSAGES, type SimError, type SimSnapshot } from './ekts/simulator';
+import { parseEscFile, EscFormatError, type EscCircuit } from './esc/escFile';
+import { writeEscFile } from './esc/escWriter';
+import type { ElementType } from './ekts/elements';
+import { Canvas, type CanvasHandle } from './ui/Canvas';
+import { MenuBar, StatusBar, Toolbar, type Menu, type MenuItem } from './ui/Chrome';
+import { ChoiceDialog, ContextMenu, MessageBox, PromptDialog } from './ui/Dialogs';
+import { Library } from './ui/Library';
+import { caption, type Lang } from './ui/strings';
+import { EXAMPLES } from './ui/examples';
+import * as Icons from './ui/icons';
 
-const MIN_MOMENTARY_PULSE_MS = 200;
-const MAX_UNDO_HISTORY = 25;
+const AUTOSAVE_KEY = 'ekts-mobil:autosave:v2';
+
+type Dialog =
+  | { kind: 'message'; title: string; text: string; icon?: 'error' | 'question' | 'info'; buttons: { label: string; onClick: () => void; primary?: boolean }[] }
+  | { kind: 'prompt'; title: string; label: string; initial: string; numeric?: boolean; onOk: (v: string) => void }
+  | { kind: 'choice'; title: string; options: string[]; current: string; onPick: (v: string) => void }
+  | { kind: 'context'; x: number; y: number; items: MenuItem[] };
+
+function loadAutosave(): { doc: CircuitDocument; name: string | null } | null {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as { name: string | null; circuit: EscCircuit; changed?: boolean };
+    const doc = CircuitDocument.fromCircuit(data.circuit);
+    doc.changed = !!data.changed;
+    return { doc, name: data.name };
+  } catch {
+    return null;
+  }
+}
+
+function download(bytes: Uint8Array | Blob, name: string, type: string) {
+  const blob = bytes instanceof Blob ? bytes : new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 export default function App() {
-  const [circuit, setCircuit] = useState<CircuitDocument>(() => {
-    const draft = loadActiveCircuitDraft();
-    return draft ?? cloneCircuit(PRESET_CIRCUITS[0]);
+  const [lang] = useState<Lang>('tr');
+  const t = useCallback((k: string) => caption(k, lang), [lang]);
+  const initial = useRef(loadAutosave());
+  const [doc, setDoc] = useState<CircuitDocument>(() => initial.current?.doc ?? new CircuitDocument());
+  const [fileName, setFileName] = useState<string | null>(() => initial.current?.name ?? null);
+  const [, bump] = useReducer((x: number) => x + 1, 0);
+  const [mode, setMode] = useState<'edit' | 'run'>('edit');
+  const [snapshot, setSnapshot] = useState<SimSnapshot | null>(null);
+  const [simError, setSimError] = useState<SimError | null>(null);
+  const [blink, setBlink] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const canvas = useRef<CanvasHandle>(null);
+  const sim = useRef<Simulator | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const changed = () => bump();
+
+  // Editing messages (MessageBox in the original).
+  useEffect(() => {
+    doc.onMessage = (key) =>
+      setDialog({ kind: 'message', title: 'EKTS', text: t(key), icon: 'error', buttons: [{ label: t('ok'), primary: true, onClick: () => setDialog(null) }] });
+  }, [doc, t]);
+
+  // Keep the last state on the device so closing the app loses nothing.
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      try {
+        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ name: fileName, circuit: doc.toCircuit(), changed: doc.changed }));
+      } catch {
+        /* storage full or unavailable */
+      }
+    }, 400);
+    return () => window.clearTimeout(id);
   });
 
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [isDark, setIsDark] = useState(false);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [fitTrigger, setFitTrigger] = useState(0);
-
-  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
-  const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
-  const [pendingPin, setPendingPin] = useState<WireEndpoint | null>(null);
-  const [savedSlots, setSavedSlots] = useState<SavedCircuitSlot[]>(() => loadSavedSlots());
-  const [undoStack, setUndoStack] = useState<CircuitDocument[]>([]);
-
-  const [interactions, setInteractions] = useState<UserInteractionState>(
-    createEmptyInteractionState
-  );
-  const [simState, setSimState] = useState<SimulationState>(() =>
-    createInitialSimulationState(circuit)
-  );
-
-  const circuitRef = useRef(circuit);
-  circuitRef.current = circuit;
-
-  const interactionsRef = useRef(interactions);
-  interactionsRef.current = interactions;
-
-  const viewportCenterRef = useRef<{ x: number; y: number }>({ x: 320, y: 260 });
-  const pressTimestampsRef = useRef<Record<string, number>>({});
-  const releaseTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-  const pushUndoState = useCallback((snapshot: CircuitDocument) => {
-    setUndoStack((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), cloneCircuit(snapshot)]);
-  }, []);
-
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
-  }, [isDark]);
+    requestAnimationFrame(() => canvas.current?.fit());
+  }, [doc]);
 
-  useEffect(() => {
-    saveActiveCircuitDraft(circuit);
-  }, [circuit]);
+  // ---- files ---------------------------------------------------------------------
 
-  useEffect(() => {
-    return () => {
-      Object.values(releaseTimersRef.current).forEach((t) => clearTimeout(t));
-    };
-  }, []);
+  const displayName = fileName ?? t('frmMainText');
+  const title = `EKTS - ${displayName}${doc.changed ? '*' : ''}`;
 
-  const runInstantSimStep = useCallback((nextInteractions: UserInteractionState) => {
-    setSimState((prev) =>
-      stepSimulation(circuitRef.current, prev, nextInteractions, 0)
-    );
-  }, []);
+  const replaceDoc = (d: CircuitDocument, name: string | null) => {
+    setDoc(d);
+    setFileName(name);
+    setLibraryOpen(false);
+  };
 
-  // Simulation loop at 20 Hz (50ms) for smooth On-Delay & Off-Delay timer countdowns
-  useEffect(() => {
-    if (!isSimulating) return;
-
-    const freshInteractions = createEmptyInteractionState();
-    interactionsRef.current = freshInteractions;
-    setInteractions(freshInteractions);
-    const initial = createInitialSimulationState(circuitRef.current);
-    setSimState(stepSimulation(circuitRef.current, initial, freshInteractions, 0));
-
-    let lastTime = performance.now();
-    const interval = setInterval(() => {
-      const now = performance.now();
-      const dt = Math.min(0.25, (now - lastTime) / 1000);
-      lastTime = now;
-
-      setSimState((prev) => {
-        if (prev.shortCircuit) return prev;
-        return stepSimulation(circuitRef.current, prev, interactionsRef.current, dt);
-      });
-    }, 50);
-
-    return () => {
-      clearInterval(interval);
-      Object.values(releaseTimersRef.current).forEach((t) => clearTimeout(t));
-      releaseTimersRef.current = {};
-    };
-  }, [isSimulating]);
-
-  const handleToggleSimulation = useCallback(() => {
-    setIsSimulating((prev) => {
-      const next = !prev;
-      if (next) {
-        setSelectedComponentId(null);
-        setSelectedWireId(null);
-        setPendingPin(null);
-        setIsDrawerOpen(false);
-      } else {
-        const empty = createEmptyInteractionState();
-        interactionsRef.current = empty;
-        setInteractions(empty);
-        setSimState(createInitialSimulationState(circuitRef.current));
-      }
-      return next;
-    });
-  }, []);
-
-  const handleResetSimulation = useCallback(() => {
-    Object.values(releaseTimersRef.current).forEach((t) => clearTimeout(t));
-    releaseTimersRef.current = {};
-    const empty = createEmptyInteractionState();
-    interactionsRef.current = empty;
-    setInteractions(empty);
-    const initial = createInitialSimulationState(circuitRef.current);
-    setSimState(stepSimulation(circuitRef.current, initial, empty, 0));
-  }, []);
-
-  const handleMomentaryPressStart = useCallback(
-    (componentId: string) => {
-      if (releaseTimersRef.current[componentId]) {
-        clearTimeout(releaseTimersRef.current[componentId]);
-        delete releaseTimersRef.current[componentId];
-      }
-      pressTimestampsRef.current[componentId] = performance.now();
-
-      const next: UserInteractionState = {
-        ...interactionsRef.current,
-        pressedButtons: {
-          ...interactionsRef.current.pressedButtons,
-          [componentId]: true,
-        },
-      };
-      interactionsRef.current = next;
-      setInteractions(next);
-      runInstantSimStep(next);
-    },
-    [runInstantSimStep]
-  );
-
-  const handleMomentaryPressEnd = useCallback(
-    (componentId: string) => {
-      const startedAt = pressTimestampsRef.current[componentId] ?? 0;
-      const elapsed = performance.now() - startedAt;
-      const remaining = Math.max(0, MIN_MOMENTARY_PULSE_MS - elapsed);
-
-      const doRelease = () => {
-        delete releaseTimersRef.current[componentId];
-        const nextPressed = { ...interactionsRef.current.pressedButtons };
-        delete nextPressed[componentId];
-        const next: UserInteractionState = {
-          ...interactionsRef.current,
-          pressedButtons: nextPressed,
-        };
-        interactionsRef.current = next;
-        setInteractions(next);
-        runInstantSimStep(next);
-      };
-
-      if (remaining > 15) {
-        if (releaseTimersRef.current[componentId]) {
-          clearTimeout(releaseTimersRef.current[componentId]);
-        }
-        releaseTimersRef.current[componentId] = setTimeout(doRelease, remaining);
-      } else {
-        doRelease();
-      }
-    },
-    [runInstantSimStep]
-  );
-
-  // Classic EKTS right-click / mobile lock hold toggle for momentary buttons
-  const handleToggleMomentaryLock = useCallback(
-    (componentId: string) => {
-      const prevLocked = interactionsRef.current.lockedButtons ?? {};
-      const nextLocked = { ...prevLocked };
-      if (nextLocked[componentId]) {
-        delete nextLocked[componentId];
-      } else {
-        nextLocked[componentId] = true;
-      }
-      const next: UserInteractionState = {
-        ...interactionsRef.current,
-        lockedButtons: nextLocked,
-      };
-      interactionsRef.current = next;
-      setInteractions(next);
-      runInstantSimStep(next);
-    },
-    [runInstantSimStep]
-  );
-
-  const handleToggleLatch = useCallback(
-    (componentId: string) => {
-      const next: UserInteractionState = {
-        ...interactionsRef.current,
-        latchedSwitches: {
-          ...interactionsRef.current.latchedSwitches,
-          [componentId]: !interactionsRef.current.latchedSwitches[componentId],
-        },
-      };
-      interactionsRef.current = next;
-      setInteractions(next);
-      runInstantSimStep(next);
-    },
-    [runInstantSimStep]
-  );
-
-  const handleToggleFuse = useCallback(
-    (componentId: string) => {
-      const next: UserInteractionState = {
-        ...interactionsRef.current,
-        blownFuses: {
-          ...interactionsRef.current.blownFuses,
-          [componentId]: !interactionsRef.current.blownFuses[componentId],
-        },
-      };
-      interactionsRef.current = next;
-      setInteractions(next);
-      runInstantSimStep(next);
-    },
-    [runInstantSimStep]
-  );
-
-  // Design mode mutations
-  const handleAddComponent = useCallback(
-    (type: ComponentType) => {
-      const def = COMPONENT_DEFINITIONS[type];
-      const center = viewportCenterRef.current;
-
-      setCircuit((prev) => {
-        pushUndoState(prev);
-        let x = snapToGrid(center.x);
-        let y = snapToGrid(center.y);
-        let guard = 0;
-        while (
-          guard < 12 &&
-          prev.components.some((c) => Math.abs(c.x - x) < 20 && Math.abs(c.y - y) < 20)
-        ) {
-          x += 40;
-          y += 20;
-          guard += 1;
-        }
-
-        const newComp: CircuitComponent = {
-          id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          type,
-          x,
-          y,
-          rotation: 0,
-          label: generateNextLabel(type, prev.components),
-          delaySeconds: def.defaultDelaySeconds,
-          lampColor: def.defaultLampColor,
-        };
-
-        setSelectedComponentId(newComp.id);
-        setSelectedWireId(null);
-        return {
-          ...prev,
-          components: [...prev.components, newComp],
-        };
-      });
-
-      if (window.innerWidth < 768) {
-        setIsDrawerOpen(false);
-      }
-    },
-    [pushUndoState]
-  );
-
-  const handleMoveComponent = useCallback((id: string, x: number, y: number) => {
-    setCircuit((prev) => {
-      const target = prev.components.find((c) => c.id === id);
-      if (!target || (target.x === x && target.y === y)) return prev;
-
-      return {
-        ...prev,
-        components: prev.components.map((c) => (c.id === id ? { ...c, x, y } : c)),
-        wires: prev.wires.map((w) =>
-          w.from.componentId === id || w.to.componentId === id
-            ? { ...w, waypoints: undefined }
-            : w
-        ),
-      };
-    });
-  }, []);
-
-  const handlePinTap = useCallback(
-    (endpoint: WireEndpoint) => {
-      setSelectedComponentId(null);
-      setSelectedWireId(null);
-
-      if (!pendingPin) {
-        setPendingPin(endpoint);
-        return;
-      }
-
-      if (
-        pendingPin.componentId === endpoint.componentId &&
-        pendingPin.pinId === endpoint.pinId
-      ) {
-        setPendingPin(null);
-        return;
-      }
-
-      setCircuit((prev) => {
-        const duplicate = prev.wires.some(
-          (w) =>
-            (w.from.componentId === pendingPin.componentId &&
-              w.from.pinId === pendingPin.pinId &&
-              w.to.componentId === endpoint.componentId &&
-              w.to.pinId === endpoint.pinId) ||
-            (w.from.componentId === endpoint.componentId &&
-              w.from.pinId === endpoint.pinId &&
-              w.to.componentId === pendingPin.componentId &&
-              w.to.pinId === pendingPin.pinId)
-        );
-
-        if (duplicate) return prev;
-        pushUndoState(prev);
-
-        const newWire: Wire = {
-          id: `w-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          from: pendingPin,
-          to: endpoint,
-        };
-        return {
-          ...prev,
-          wires: [...prev.wires, newWire],
-        };
-      });
-
-      setPendingPin(null);
-    },
-    [pendingPin, pushUndoState]
-  );
-
-  const handleUpdateLabel = useCallback((id: string, label: string) => {
-    setCircuit((prev) => ({
-      ...prev,
-      components: prev.components.map((c) =>
-        c.id === id ? { ...c, label: label.toUpperCase() } : c
-      ),
-    }));
-  }, []);
-
-  const handleUpdateDelay = useCallback((id: string, delaySeconds: number) => {
-    setCircuit((prev) => ({
-      ...prev,
-      components: prev.components.map((c) =>
-        c.id === id ? { ...c, delaySeconds } : c
-      ),
-    }));
-  }, []);
-
-  const handleUpdateLampColor = useCallback((id: string, lampColor: LampColor) => {
-    setCircuit((prev) => ({
-      ...prev,
-      components: prev.components.map((c) =>
-        c.id === id ? { ...c, lampColor } : c
-      ),
-    }));
-  }, []);
-
-  const handleRotateComponent = useCallback(
-    (id: string) => {
-      setCircuit((prev) => {
-        pushUndoState(prev);
-        return {
-          ...prev,
-          components: prev.components.map((c) => {
-            if (c.id !== id) return c;
-            const nextRot = ((c.rotation + 90) % 360) as Rotation;
-            return { ...c, rotation: nextRot };
-          }),
-          wires: prev.wires.map((w) =>
-            w.from.componentId === id || w.to.componentId === id
-              ? { ...w, waypoints: undefined }
-              : w
-          ),
-        };
-      });
-    },
-    [pushUndoState]
-  );
-
-  const handleDeleteComponent = useCallback(
-    (id: string) => {
-      setCircuit((prev) => {
-        pushUndoState(prev);
-        return {
-          ...prev,
-          components: prev.components.filter((c) => c.id !== id),
-          wires: prev.wires.filter(
-            (w) => w.from.componentId !== id && w.to.componentId !== id
-          ),
-        };
-      });
-      setSelectedComponentId(null);
-      setPendingPin((prev) => (prev?.componentId === id ? null : prev));
-    },
-    [pushUndoState]
-  );
-
-  const handleDeleteWire = useCallback(
-    (id: string) => {
-      setCircuit((prev) => {
-        pushUndoState(prev);
-        return {
-          ...prev,
-          wires: prev.wires.filter((w) => w.id !== id),
-        };
-      });
-      setSelectedWireId(null);
-    },
-    [pushUndoState]
-  );
-
-  const handleClearCanvas = useCallback(() => {
-    setCircuit((prev) => {
-      if (prev.components.length === 0) return prev;
-      pushUndoState(prev);
-      return {
-        ...prev,
-        id: `custom-${Date.now()}`,
-        name: 'Yeni Şema',
-        components: [],
-        wires: [],
-      };
-    });
-    setSelectedComponentId(null);
-    setSelectedWireId(null);
-    setPendingPin(null);
-  }, [pushUndoState]);
-
-  const handleUndo = useCallback(() => {
-    setUndoStack((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      setCircuit(last);
-      setSelectedComponentId(null);
-      setSelectedWireId(null);
-      setPendingPin(null);
-      return prev.slice(0, -1);
-    });
-  }, []);
-
-  const loadCircuitIntoWorkspace = useCallback((doc: CircuitDocument) => {
-    setIsSimulating(false);
-    setSelectedComponentId(null);
-    setSelectedWireId(null);
-    setPendingPin(null);
-    setUndoStack([]);
-    const cloned = cloneCircuit(doc);
-    setCircuit(cloned);
-    setInteractions(createEmptyInteractionState());
-    setSimState(createInitialSimulationState(cloned));
-    setFitTrigger((n) => n + 1);
-  }, []);
-
-  const handleNewBlankCircuit = useCallback(() => {
-    loadCircuitIntoWorkspace({
-      id: `custom-${Date.now()}`,
-      name: 'Yeni Kumanda Devresi',
-      components: [],
-      wires: [],
-    });
-  }, [loadCircuitIntoWorkspace]);
-
-  const handleSaveSlot = useCallback(
-    (name: string) => {
-      const updated = saveCircuitSlot(name, circuit);
-      setSavedSlots(updated);
-      setCircuit((prev) => ({ ...prev, name }));
-    },
-    [circuit]
-  );
-
-  const handleDeleteSlot = useCallback((slotId: string) => {
-    setSavedSlots(deleteCircuitSlot(slotId));
-  }, []);
-
-  // Desktop keyboard shortcuts (Delete, R to rotate, Ctrl/Cmd+Z to undo, Escape)
-  useEffect(() => {
-    if (isSimulating || isMenuOpen) return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        handleUndo();
-      } else if (e.key === 'Escape') {
-        setPendingPin(null);
-        setSelectedComponentId(null);
-        setSelectedWireId(null);
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedComponentId) {
-        e.preventDefault();
-        handleDeleteComponent(selectedComponentId);
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedWireId) {
-        e.preventDefault();
-        handleDeleteWire(selectedWireId);
-      } else if ((e.key === 'r' || e.key === 'R') && selectedComponentId) {
-        e.preventDefault();
-        handleRotateComponent(selectedComponentId);
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [
-    isSimulating,
-    isMenuOpen,
-    selectedComponentId,
-    selectedWireId,
-    handleUndo,
-    handleDeleteComponent,
-    handleDeleteWire,
-    handleRotateComponent,
-  ]);
-
-  const selectedComponent = useMemo(
-    () => circuit.components.find((c) => c.id === selectedComponentId) ?? null,
-    [circuit.components, selectedComponentId]
-  );
-
-  // Available coil/timer labels for EKTS 1-tap contact binding
-  const { availableCoilLabels, availableOnTimerLabels, availableOffTimerLabels } = useMemo(() => {
-    const coils = new Set<string>();
-    const onTimers = new Set<string>();
-    const offTimers = new Set<string>();
-    for (const c of circuit.components) {
-      const norm = normalizeLabel(c.label);
-      if (!norm) continue;
-      if (c.type === 'coil_contactor') coils.add(norm);
-      else if (c.type === 'coil_timer_on') onTimers.add(norm);
-      else if (c.type === 'coil_timer_off') offTimers.add(norm);
+  const saveAs = (name?: string) => {
+    const base = (name ?? fileName ?? t('frmMainText')).replace(/\.esc$/i, '');
+    try {
+      download(writeEscFile(doc.toCircuit()), `${base}.esc`, 'application/octet-stream');
+      setFileName(`${base}.esc`);
+      doc.changed = false;
+      changed();
+      return true;
+    } catch (e) {
+      setDialog({ kind: 'message', title: 'EKTS', text: String((e as Error).message), icon: 'error', buttons: [{ label: t('ok'), primary: true, onClick: () => setDialog(null) }] });
+      return false;
     }
-    return {
-      availableCoilLabels: Array.from(coils),
-      availableOnTimerLabels: Array.from(onTimers),
-      availableOffTimerLabels: Array.from(offTimers),
+  };
+
+  /** pnlMain_New's question before throwing the current circuit away. */
+  const confirmDiscard = (then: () => void) => {
+    if (!doc.changed) {
+      then();
+      return;
+    }
+    setDialog({
+      kind: 'message',
+      title: 'EKTS',
+      icon: 'question',
+      text: `${t('alertSaveChanges')}${displayName}?`,
+      buttons: [
+        {
+          label: t('yes'),
+          primary: true,
+          onClick: () => {
+            setDialog(null);
+            if (saveAs()) then();
+          },
+        },
+        {
+          label: t('no'),
+          onClick: () => {
+            setDialog(null);
+            then();
+          },
+        },
+        { label: t('cancel'), onClick: () => setDialog(null) },
+      ],
+    });
+  };
+
+  const openBytes = (buf: ArrayBuffer, name: string) => {
+    try {
+      const d = CircuitDocument.fromCircuit(parseEscFile(buf));
+      replaceDoc(d, name);
+    } catch (e) {
+      const text = e instanceof EscFormatError ? `${t('alertError12')}\n${e.message}` : t('alertError12');
+      setDialog({ kind: 'message', title: 'EKTS', text, icon: 'error', buttons: [{ label: t('ok'), primary: true, onClick: () => setDialog(null) }] });
+    }
+  };
+
+  const newFile = () => confirmDiscard(() => replaceDoc(new CircuitDocument(), null));
+  const openFile = () => confirmDiscard(() => fileInput.current?.click());
+  const openExample = (ex: (typeof EXAMPLES)[number]) =>
+    confirmDiscard(async () => {
+      const res = await fetch(ex.url);
+      openBytes(await res.arrayBuffer(), ex.name);
+    });
+
+  // ---- editing --------------------------------------------------------------------
+
+  const addElement = (type: ElementType) => {
+    doc.deselect(null);
+    const el = doc.addElement(type, canvas.current?.viewOrigin() ?? { x: 0, y: 0 });
+    doc.deselect(el);
+    changed();
+  };
+
+  const deleteSelection = () => {
+    doc.deleteSelected();
+    changed();
+  };
+
+  const editLabel = (el: DElement, which: 1 | 2) => {
+    if (which === 2) {
+      if (!isTimer(el.type)) return;
+      setDialog({
+        kind: 'prompt',
+        title: caption(el.type, lang),
+        label: t('delay'),
+        initial: el.label2,
+        numeric: true,
+        onOk: (v) => {
+          setDialog(null);
+          doc.setDelay(el, v);
+          changed();
+        },
+      });
+      return;
+    }
+    if (isContact(el.type)) {
+      const options = doc.relayNames();
+      setDialog({
+        kind: 'choice',
+        title: t('relayPick'),
+        options,
+        current: el.label,
+        onPick: (v) => {
+          setDialog(null);
+          doc.setContactRelay(el, v);
+          changed();
+        },
+      });
+      return;
+    }
+    setDialog({
+      kind: 'prompt',
+      title: caption(el.type, lang),
+      label: t('name'),
+      initial: el.label,
+      onOk: (v) => {
+        setDialog(null);
+        doc.setLabel(el, v);
+        changed();
+      },
+    });
+  };
+
+  const contextMenu = (el: DElement, x: number, y: number) => {
+    const items: MenuItem[] = [
+      {
+        label: t('cmRotate'),
+        submenu: [1, 2, 3].map((q) => ({
+          label: String(q * 90),
+          onClick: () => {
+            doc.rotate(el, q);
+            changed();
+          },
+        })),
+      },
+    ];
+    if (el.type === 'Lamba') {
+      const names = ['cmcRed', 'cmcBlue', 'cmcGreen', 'cmcMagenta', 'cmcYellow'];
+      items.push({
+        label: t('cmColor'),
+        submenu: LAMP_COLORS.map((c, i) => ({
+          label: t(names[i]),
+          checked: el.color === c,
+          onClick: () => {
+            doc.setColor(el, c);
+            changed();
+          },
+        })),
+      });
+    }
+    items.push('sep', { label: t('rename'), onClick: () => editLabel(el, 1) });
+    if (isTimer(el.type)) items.push({ label: t('delay'), onClick: () => editLabel(el, 2) });
+    items.push({
+      label: t('mnuEditDelete'),
+      onClick: () => {
+        doc.deselect(el);
+        deleteSelection();
+      },
+    });
+    setDialog({ kind: 'context', x, y, items });
+  };
+
+  // ---- running ---------------------------------------------------------------------
+
+  const stopRun = useCallback(() => {
+    sim.current?.stop();
+    sim.current = null;
+    setSnapshot(null);
+    setMode('edit');
+  }, []);
+
+  const showSimError = (s: Simulator) => {
+    if (!s.error) return false;
+    setSimError(s.error);
+    return true;
+  };
+
+  const startRun = () => {
+    doc.deselect(null);
+    setLibraryOpen(false);
+    const s = new Simulator(doc.toCircuit());
+    sim.current = s;
+    s.subscribe(() => {
+      setSnapshot(s.snapshot());
+      if (!s.running && s.error) showSimError(s);
+    });
+    s.start();
+    if (showSimError(s)) {
+      setSnapshot(s.snapshot());
+      return;
+    }
+    setSnapshot(s.snapshot());
+    setMode('run');
+    changed();
+  };
+
+  // Simulated time follows the clock while running.
+  useEffect(() => {
+    if (mode !== 'run') return;
+    let last = performance.now();
+    let id = 0;
+    const frame = (now: number) => {
+      sim.current?.advance(Math.min(250, now - last));
+      last = now;
+      id = requestAnimationFrame(frame);
     };
-  }, [circuit.components]);
+    id = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(id);
+  }, [mode]);
+
+  // Faulty parts blink red and yellow while the message is up (alertTimer).
+  useEffect(() => {
+    if (!simError) return;
+    const id = window.setInterval(() => setBlink((b) => !b), 300);
+    return () => window.clearInterval(id);
+  }, [simError]);
+
+  const closeSimError = () => {
+    setSimError(null);
+    sim.current = null;
+    setSnapshot(null);
+    setMode('edit');
+  };
+
+  // ---- keyboard (desktop browsers) ---------------------------------------------------
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (dialog || mode !== 'edit') return;
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (e.key === 'Delete') deleteSelection();
+      else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        doc.selectAll();
+        changed();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  // ---- chrome ------------------------------------------------------------------------
+
+  const running = mode === 'run';
+  const menus: Menu[] = [
+    {
+      label: t('mnuFile'),
+      disabled: running,
+      items: [
+        { label: t('mnuFileNew'), onClick: newFile },
+        { label: `${t('mnuFileOpen')}…`, onClick: openFile },
+        { label: t('examples'), submenu: EXAMPLES.map((ex) => ({ label: ex.name, onClick: () => openExample(ex) })) },
+        'sep',
+        { label: t('mnuFileSave'), onClick: () => saveAs() },
+        {
+          label: `${t('mnuFileSaveAs')}…`,
+          onClick: () =>
+            setDialog({
+              kind: 'prompt',
+              title: t('mnuFileSaveAs'),
+              label: t('name'),
+              initial: displayName.replace(/\.esc$/i, ''),
+              onOk: (v) => {
+                setDialog(null);
+                if (v.trim()) saveAs(v.trim());
+              },
+            }),
+        },
+      ],
+    },
+    {
+      label: t('mnuEdit'),
+      disabled: running,
+      items: [
+        {
+          label: t('mnuEditSelectAll'),
+          onClick: () => {
+            doc.selectAll();
+            changed();
+          },
+        },
+        {
+          label: t('mnuEditDeselect'),
+          onClick: () => {
+            doc.deselect(null);
+            changed();
+          },
+        },
+        { label: t('mnuEditDelete'), onClick: deleteSelection, disabled: !doc.hasSelection },
+      ],
+    },
+    {
+      label: t('mnuWindow'),
+      disabled: running,
+      items: [
+        { label: t('mnuWindowLibrary'), checked: libraryOpen, onClick: () => setLibraryOpen(!libraryOpen) },
+        { label: t('fit'), onClick: () => canvas.current?.fit() },
+      ],
+    },
+    {
+      label: t('mnuHelp'),
+      disabled: running,
+      items: [
+        { label: t('mnuHelpWeb'), onClick: () => window.open('https://veppa.com/ekts/elektrik-kumanda-teknikleri-simulatoru-ekts-kilavuzu/', '_blank', 'noopener') },
+        {
+          label: t('mnuHelpAbout').replace('ESCS', 'EKTS'),
+          onClick: () =>
+            setDialog({
+              kind: 'message',
+              title: t('mnuHelpAbout').replace('ESCS', 'EKTS'),
+              icon: 'info',
+              text:
+                'Elektrik Kumanda Teknikleri Simülatörü (EKTS) 1.0.3\n' +
+                'Programlayan ve geliştiren: Vepa HALLIYEV\n' +
+                'Danışman: Yrd. Doç. Dr. Hasan ERDAL\n' +
+                'Marmara Üniversitesi, 2005\n\n' +
+                'EKTS Mobil: masaüstü programın telefon ve tablet için uyarlaması.',
+              buttons: [{ label: t('ok'), primary: true, onClick: () => setDialog(null) }],
+            }),
+        },
+      ],
+    },
+  ];
+
+  const alert = simError
+    ? { elements: new Set(simError.elements), lines: new Set(simError.lines), phase: blink }
+    : null;
 
   return (
-    <div
-      className="h-dvh w-screen flex flex-col overflow-hidden bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100"
-      data-mode={isSimulating ? 'simulation' : 'design'}
-    >
-      <TopBar
-        circuitName={circuit.name}
-        isSimulating={isSimulating}
-        isDark={isDark}
-        hasShortCircuit={Boolean(simState.shortCircuit)}
-        onToggleSimulation={handleToggleSimulation}
-        onOpenMenu={() => setIsMenuOpen(true)}
-        onToggleTheme={() => setIsDark((d) => !d)}
+    <div className="app">
+      <MenuBar menus={menus} title={title} />
+      <Toolbar
+        buttons={[
+          { key: 'new', title: t('tbBtnNew'), icon: <Icons.IconNew />, onClick: newFile, disabled: running },
+          { key: 'open', title: t('tbBtnOpen'), icon: <Icons.IconOpen />, onClick: openFile, disabled: running },
+          { key: 'save', title: t('tbBtnSave'), icon: <Icons.IconSave />, onClick: () => saveAs(), disabled: running },
+          {
+            key: 'delete',
+            title: t('tbBtnDelete'),
+            icon: <Icons.IconDelete disabled={running || !doc.hasSelection} />,
+            onClick: deleteSelection,
+            disabled: running || !doc.hasSelection,
+            sepBefore: true,
+          },
+          {
+            key: 'library',
+            title: t('tbBtnLibrary'),
+            icon: <Icons.IconLibrary />,
+            onClick: () => setLibraryOpen(!libraryOpen),
+            pushed: libraryOpen,
+            disabled: running,
+            sepBefore: true,
+          },
+          {
+            key: 'run',
+            title: running ? t('stop') : t('tbBtnRun'),
+            icon: running ? <Icons.IconStop /> : <Icons.IconRun />,
+            onClick: running ? stopRun : startRun,
+            pushed: running,
+          },
+        ]}
       />
-
-      {isSimulating && simState.shortCircuit && (
-        <ShortCircuitBanner
-          fault={simState.shortCircuit}
-          onReturnToDesign={handleToggleSimulation}
-        />
-      )}
-
-      <main className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-        <SchematicCanvas
-          circuit={circuit}
-          isSimulating={isSimulating}
-          isDark={isDark}
-          simState={simState}
-          interactions={interactions}
-          selectedComponentId={selectedComponentId}
-          selectedWireId={selectedWireId}
-          pendingPin={pendingPin}
-          fitTrigger={fitTrigger}
-          onSelectComponent={setSelectedComponentId}
-          onSelectWire={setSelectedWireId}
-          onPinTap={handlePinTap}
-          onCancelWiring={() => setPendingPin(null)}
-          onMoveComponent={handleMoveComponent}
-          onMomentaryPressStart={handleMomentaryPressStart}
-          onMomentaryPressEnd={handleMomentaryPressEnd}
-          onToggleMomentaryLock={handleToggleMomentaryLock}
-          onToggleLatch={handleToggleLatch}
-          onToggleFuse={handleToggleFuse}
-          onViewportCenterChange={(pt) => {
-            viewportCenterRef.current = pt;
-          }}
-        />
-
-        {!isSimulating && (
-          <PropertyBar
-            selectedComponent={selectedComponent}
-            selectedWireId={selectedWireId}
-            availableCoilLabels={availableCoilLabels}
-            availableOnTimerLabels={availableOnTimerLabels}
-            availableOffTimerLabels={availableOffTimerLabels}
-            onUpdateLabel={handleUpdateLabel}
-            onUpdateDelay={handleUpdateDelay}
-            onUpdateLampColor={handleUpdateLampColor}
-            onRotateComponent={handleRotateComponent}
-            onDeleteComponent={handleDeleteComponent}
-            onDeleteWire={handleDeleteWire}
-            onClose={() => {
-              setSelectedComponentId(null);
-              setSelectedWireId(null);
-            }}
+      <div className="workspace">
+        <div className="panel">
+          <Canvas
+            ref={canvas}
+            doc={doc}
+            version={doc.version}
+            mode={mode}
+            snapshot={snapshot}
+            alert={alert}
+            onChange={changed}
+            onPress={(i, latch) => sim.current?.pointerDown(i, latch)}
+            onRelease={(i, latch) => sim.current?.pointerUp(i, latch)}
+            onContextMenu={contextMenu}
+            onEditLabel={editLabel}
+            onZoom={setZoom}
           />
-        )}
-      </main>
+        </div>
+        {libraryOpen && !running && <Library lang={lang} onAdd={addElement} onClose={() => setLibraryOpen(false)} />}
+      </div>
+      <StatusBar
+        text={running ? t('running') : ''}
+        right={
+          <>
+            <button type="button" className="status-btn" aria-label="−" onClick={() => canvas.current?.zoomBy(1 / 1.25)}>
+              <Icons.IconZoomOut />
+            </button>
+            <span className="status-zoom">{Math.round(zoom * 100)}%</span>
+            <button type="button" className="status-btn" aria-label="+" onClick={() => canvas.current?.zoomBy(1.25)}>
+              <Icons.IconZoomIn />
+            </button>
+            <button type="button" className="status-btn" aria-label={t('fit')} title={t('fit')} onClick={() => canvas.current?.fit()}>
+              <Icons.IconFit />
+            </button>
+          </>
+        }
+      />
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".esc,application/octet-stream"
+        hidden
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) openBytes(await f.arrayBuffer(), f.name);
+        }}
+      />
 
-      {isSimulating ? (
-        <SimulationBar
-          circuit={circuit}
-          simState={simState}
-          interactions={interactions}
-          onMomentaryPressStart={handleMomentaryPressStart}
-          onMomentaryPressEnd={handleMomentaryPressEnd}
-          onToggleMomentaryLock={handleToggleMomentaryLock}
-          onToggleLatch={handleToggleLatch}
-          onToggleFuse={handleToggleFuse}
-          onResetSimulation={handleResetSimulation}
-        />
-      ) : (
-        <ComponentDrawer
-          isOpen={isDrawerOpen}
-          isDark={isDark}
-          componentCount={circuit.components.length}
-          wireCount={circuit.wires.length}
-          canUndo={undoStack.length > 0}
-          onToggleOpen={() => setIsDrawerOpen((o) => !o)}
-          onAddComponent={handleAddComponent}
-          onUndo={handleUndo}
-          onClearCanvas={handleClearCanvas}
+      {simError && (
+        <MessageBox
+          title="EKTS"
+          icon="error"
+          text={SIM_MESSAGES[simError.key][lang]}
+          buttons={[{ label: t('ok'), primary: true, onClick: closeSimError }]}
         />
       )}
-
-      <PresetsModal
-        isOpen={isMenuOpen}
-        currentCircuit={circuit}
-        savedSlots={savedSlots}
-        onClose={() => setIsMenuOpen(false)}
-        onSelectPreset={loadCircuitIntoWorkspace}
-        onNewBlankCircuit={handleNewBlankCircuit}
-        onSaveSlot={handleSaveSlot}
-        onLoadSlot={(slot) => loadCircuitIntoWorkspace(slot.circuit)}
-        onDeleteSlot={handleDeleteSlot}
-        onImportCircuit={loadCircuitIntoWorkspace}
-      />
+      {dialog?.kind === 'message' && <MessageBox title={dialog.title} text={dialog.text} icon={dialog.icon} buttons={dialog.buttons} />}
+      {dialog?.kind === 'prompt' && (
+        <PromptDialog
+          title={dialog.title}
+          label={dialog.label}
+          initial={dialog.initial}
+          numeric={dialog.numeric}
+          okLabel={t('ok')}
+          cancelLabel={t('cancel')}
+          onOk={dialog.onOk}
+          onCancel={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'choice' && (
+        <ChoiceDialog
+          title={dialog.title}
+          options={dialog.options}
+          current={dialog.current}
+          empty={t('noRelays')}
+          cancelLabel={t('cancel')}
+          onPick={dialog.onPick}
+          onCancel={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'context' && <ContextMenu x={dialog.x} y={dialog.y} items={dialog.items} onClose={() => setDialog(null)} />}
     </div>
   );
 }

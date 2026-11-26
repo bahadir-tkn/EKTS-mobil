@@ -1,75 +1,557 @@
-@import "tailwindcss";
-@custom-variant dark (&:where(.dark, .dark *));
+/*
+ * EKTS Mobil — the plain look of the desktop program's window:
+ * light gray bars, thin borders, system font, white drawing sheet.
+ */
+:root {
+  --face: #ecebe6;
+  --face-dark: #dcdad3;
+  --border: #aca899;
+  --border-dark: #716f64;
+  --text: #000;
+  --text-dim: #5f5d55;
+  --highlight: #316ac5;
+  --highlight-text: #fff;
+  --sheet: #fff;
+  --font: Tahoma, 'Segoe UI', 'Microsoft Sans Serif', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: light;
+}
 
-@layer base {
-  :root {
-    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
+* {
+  box-sizing: border-box;
+}
 
-  html,
-  body,
-  #root {
-    height: 100%;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    font-family: var(--font-sans);
-    overscroll-behavior: none;
-    -webkit-tap-highlight-color: transparent;
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--face);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* ---- menu bar ---------------------------------------------------------------- */
+
+.menubar {
+  display: flex;
+  align-items: stretch;
+  background: var(--face);
+  border-bottom: 1px solid var(--face-dark);
+  min-height: 34px;
+  position: relative;
+  z-index: 20;
+}
+
+.menubar-entry {
+  position: relative;
+}
+
+.menubar-title {
+  height: 100%;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  cursor: default;
+  user-select: none;
+}
+
+.menubar-title.open,
+.menubar-title:active {
+  background: var(--highlight);
+  color: var(--highlight-text);
+}
+
+.menubar-title:disabled {
+  color: #a19f95;
+}
+
+.menubar-title-text {
+  margin-left: auto;
+  align-self: center;
+  padding: 0 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.menu-list,
+.context-menu > .menu-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 31;
+  min-width: 220px;
+  max-width: calc(100vw - 8px);
+  background: #fff;
+  border: 1px solid var(--border-dark);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.18);
+  padding: 2px;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 31;
+}
+
+.context-menu > .menu-list {
+  position: static;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px 0 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: default;
+}
+
+.menu-item:not(:disabled):active,
+.menu-item:not(:disabled):hover {
+  background: var(--highlight);
+  color: var(--highlight-text);
+}
+
+.menu-item:disabled {
+  color: #a19f95;
+}
+
+.menu-check {
+  width: 26px;
+  text-align: center;
+  flex: none;
+}
+
+.menu-label {
+  flex: 1;
+}
+
+.menu-arrow {
+  margin-left: 12px;
+  font-size: 11px;
+}
+
+.menu-sub {
+  border-left: 1px solid var(--face-dark);
+  margin-left: 26px;
+}
+
+.menu-sep {
+  height: 1px;
+  background: var(--face-dark);
+  margin: 3px 2px;
+}
+
+/* ---- toolbar ------------------------------------------------------------------- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 4px;
+  background: var(--face);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tool {
+  flex: none;
+  width: 42px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  background: none;
+  border-radius: 2px;
+}
+
+.tool:not(:disabled):active {
+  border-color: var(--border-dark) #fff #fff var(--border-dark);
+  background: var(--face-dark);
+}
+
+.tool.pushed {
+  border-color: var(--border-dark) #fff #fff var(--border-dark);
+  background: #e1dfd8;
+}
+
+.tool:disabled svg {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+@media (hover: hover) {
+  .tool:not(:disabled):hover {
+    border-color: #fff var(--border-dark) var(--border-dark) #fff;
   }
 }
 
-.font-mono-tech {
-  font-family: var(--font-mono);
+.toolbar-sep {
+  width: 1px;
+  height: 26px;
+  margin: 0 4px;
+  background: var(--border);
+  box-shadow: 1px 0 0 #fff;
+  flex: none;
+}
+
+/* ---- workspace ----------------------------------------------------------------- */
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+}
+
+.panel {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  background: var(--sheet);
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-right: 0;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  background: var(--sheet);
+  cursor: default;
+}
+
+/* ---- tool windows (library) ------------------------------------------------------ */
+
+.toolwindow {
+  display: flex;
+  flex-direction: column;
+  background: var(--face);
+  border: 1px solid var(--border-dark);
+}
+
+.toolwindow-title {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding-left: 8px;
+  background: var(--face-dark);
+  border-bottom: 1px solid var(--border);
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.toolwindow-title span {
+  flex: 1;
+}
+
+.toolwindow-close {
+  width: 36px;
+  height: 100%;
+  border: 0;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.toolwindow-close:active {
+  background: var(--border);
+}
+
+.library {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: min(52%, 420px);
+  z-index: 10;
+  border-left: 0;
+  border-right: 0;
+  box-shadow: 0 -2px 0 rgba(0, 0, 0, 0.08);
+}
+
+@media (min-width: 820px) {
+  .library {
+    position: static;
+    width: 280px;
+    height: auto;
+    border-left: 1px solid var(--border-dark);
+    border-right: 0;
+    border-top: 0;
+    box-shadow: none;
+  }
+}
+
+.lib-preview {
+  flex: none;
+  height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.lib-add {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+}
+
+.lib-tree {
+  flex: 1;
+  overflow-y: auto;
+  background: #fff;
+  padding: 2px 0 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tree-node,
+.tree-leaf {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 0 8px;
+  cursor: default;
+}
+
+.tree-leaf {
+  padding-left: 36px;
+}
+
+.tree-leaf.selected {
+  background: var(--highlight);
+  color: var(--highlight-text);
+}
+
+.tree-box {
+  display: inline-grid;
+  place-items: center;
+  width: 11px;
+  height: 11px;
+  margin-right: 8px;
+  border: 1px solid #919b9c;
+  font-size: 10px;
+  line-height: 1;
+  color: #333;
+  background: #fff;
+}
+
+/* ---- status bar -------------------------------------------------------------------- */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 4px 0 8px;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--face);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.status-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-right {
+  display: flex;
+  align-items: center;
+}
+
+.status-btn {
+  width: 36px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  background: none;
+}
+
+.status-btn:active {
+  border-color: var(--border-dark) #fff #fff var(--border-dark);
+}
+
+.status-zoom {
+  min-width: 44px;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-@keyframes rotor-cw {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/* ---- dialogs ----------------------------------------------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.12);
+  padding: 16px;
 }
 
-@keyframes rotor-ccw {
-  from {
-    transform: rotate(360deg);
-  }
-  to {
-    transform: rotate(0deg);
-  }
+.dialog {
+  width: min(380px, 100%);
+  background: var(--face);
+  border: 1px solid var(--border-dark);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.2);
 }
 
-@keyframes fault-dash {
-  to {
-    stroke-dashoffset: -24;
-  }
+.dialog-title {
+  padding: 7px 10px;
+  background: var(--face-dark);
+  border-bottom: 1px solid var(--border);
+  font-weight: bold;
+  font-size: 13px;
 }
 
-.animate-rotor-cw {
-  animation: rotor-cw 0.9s linear infinite;
-  transform-box: fill-box;
-  transform-origin: center;
+.dialog-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px 14px 8px;
 }
 
-.animate-rotor-ccw {
-  animation: rotor-ccw 0.9s linear infinite;
-  transform-box: fill-box;
-  transform-origin: center;
+.dialog-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: bold;
+  font-size: 18px;
+  color: #fff;
 }
 
-.animate-fault-dash {
-  animation: fault-dash 0.6s linear infinite;
+.dialog-icon.error {
+  background: #cc2222;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .animate-rotor-cw,
-  .animate-rotor-ccw,
-  .animate-fault-dash {
-    animation: none;
-  }
+.dialog-icon.question,
+.dialog-icon.info {
+  background: #2f5fa8;
+}
+
+.dialog-text {
+  white-space: pre-line;
+  line-height: 1.4;
+  padding-top: 5px;
+}
+
+.dialog-text.pad {
+  padding: 12px;
+}
+
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+}
+
+.dialog-field input {
+  font: inherit;
+  font-size: 16px;
+  padding: 7px 8px;
+  border: 1px solid var(--border-dark);
+  background: #fff;
+  border-radius: 0;
+}
+
+.dialog-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 12px 14px 0;
+  border: 1px solid var(--border-dark);
+  background: #fff;
+}
+
+.list-item {
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.list-item.selected {
+  background: var(--highlight);
+  color: var(--highlight-text);
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 14px 14px;
+}
+
+.btn {
+  min-width: 84px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border-dark);
+  background: #f7f6f2;
+  border-radius: 2px;
+}
+
+.btn.primary {
+  outline: 1px solid var(--text);
+  outline-offset: -3px;
+}
+
+.btn:active {
+  background: var(--face-dark);
 }
