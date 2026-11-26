@@ -14,12 +14,13 @@ import { ChoiceDialog, ContextMenu, MessageBox, PromptDialog } from './ui/Dialog
 import { Library } from './ui/Library';
 import { loadPageSettings, PageSetupDialog, PrintPreview, savePageSettings, type PageSettings } from './ui/Printing';
 import { exportImage, IMAGE_FORMATS, type ImageFormat } from './ui/exportImage';
-import { caption, type Lang } from './ui/strings';
+import { caption, LANGS, type Lang } from './ui/strings';
 import { EXAMPLES } from './ui/examples';
 import { History } from './ui/history';
 import * as Icons from './ui/icons';
 
 const AUTOSAVE_KEY = 'ekts-mobil:autosave:v2';
+const LANG_KEY = 'ekts-mobil:lang';
 
 type Dialog =
   | { kind: 'message'; title: string; text: string; icon?: 'error' | 'question' | 'info'; buttons: { label: string; onClick: () => void; primary?: boolean }[] }
@@ -62,7 +63,24 @@ function download(bytes: Uint8Array | Blob, name: string, type: string) {
 }
 
 export default function App() {
-  const [lang] = useState<Lang>('tr');
+  // iLng, kept between sessions like escs.cfg; Turkish until another is picked.
+  const [lang, setLangState] = useState<Lang>(() => {
+    try {
+      const v = localStorage.getItem(LANG_KEY) as Lang | null;
+      if (v && (LANGS as readonly string[]).includes(v)) return v;
+    } catch {
+      /* default */
+    }
+    return 'tr';
+  });
+  const setLang = (l: Lang) => {
+    setLangState(l);
+    try {
+      localStorage.setItem(LANG_KEY, l);
+    } catch {
+      /* not kept */
+    }
+  };
   const t = useCallback((k: string) => caption(k, lang), [lang]);
   const initial = useRef(loadAutosave());
   const [doc, setDoc] = useState<CircuitDocument>(() => initial.current?.doc ?? new CircuitDocument());
@@ -508,6 +526,7 @@ export default function App() {
       label: t('mnuWindow'),
       disabled: running,
       items: [
+        { label: t('mnuWindowLang'), submenu: LANGS.map((l) => ({ label: caption('mnuLng', l), checked: l === lang, onClick: () => setLang(l) })) },
         { label: t('mnuWindowLibrary'), checked: libraryOpen, onClick: () => setLibraryOpen(!libraryOpen) },
         { label: t('mnuWindowSummary'), checked: summaryShown, onClick: toggleSummary },
         { label: t('mnuWindowLimits'), checked: showLimits, onClick: () => setShowLimits(!showLimits) },
@@ -679,7 +698,7 @@ export default function App() {
         <MessageBox
           title="EKTS"
           icon="error"
-          text={SIM_MESSAGES[simError.key][lang]}
+          text={simError.key === 'loop' ? SIM_MESSAGES.loop.tr : caption(simError.key, lang)}
           buttons={[{ label: t('ok'), primary: true, onClick: closeSimError }]}
         />
       )}
