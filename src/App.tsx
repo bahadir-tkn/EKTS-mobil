@@ -191,6 +191,13 @@ export default function App() {
     changed();
   };
 
+  const summaryShown = !!doc.summary?.visible;
+  const toggleSummary = () => {
+    if (running) return;
+    doc.showSummary(!summaryShown, canvas.current?.viewOrigin() ?? { x: 0, y: 0 });
+    changed();
+  };
+
   const deleteSelection = () => {
     doc.deleteSelected();
     changed();
@@ -463,6 +470,7 @@ export default function App() {
       disabled: running,
       items: [
         { label: t('mnuWindowLibrary'), checked: libraryOpen, onClick: () => setLibraryOpen(!libraryOpen) },
+        { label: t('mnuWindowSummary'), checked: summaryShown, onClick: toggleSummary },
         { label: t('fit'), onClick: () => canvas.current?.fit() },
       ],
     },
@@ -535,6 +543,14 @@ export default function App() {
             sepBefore: true,
           },
           {
+            key: 'sum',
+            title: t('tbBtnSum'),
+            icon: <Icons.IconList />,
+            onClick: toggleSummary,
+            pushed: summaryShown,
+            disabled: running,
+          },
+          {
             key: 'run',
             title: running ? t('stop') : t('tbBtnRun'),
             icon: running ? <Icons.IconStop /> : <Icons.IconRun />,
@@ -550,6 +566,7 @@ export default function App() {
             doc={doc}
             version={doc.version}
             mode={mode}
+            lang={lang}
             snapshot={snapshot}
             alert={alert}
             onChange={bump}

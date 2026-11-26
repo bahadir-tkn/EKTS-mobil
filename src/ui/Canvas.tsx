@@ -12,11 +12,13 @@
  * in for the right mouse button (context menu while editing, latching a
  * button while running).
  */
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { CircuitDocument, CP, DDot, DElement, DLine, RADIUS, type DObject, type DText, type Pt } from '../ekts/document';
 import type { SimSnapshot } from '../ekts/simulator';
 import { rotatedSize } from '../ekts/elements';
 import { Drawing, labelBox, type WireDraft } from './Drawing';
+import { summaryLayout } from './Summary';
+import type { Lang } from './strings';
 
 const PRESSABLE = ['Role', 'StartButon', 'StopButon', 'StartStopButon', 'SinirAnahtar', 'Startx3', 'Start3x3', 'SinirAnahtar2'];
 const TAP_SLOP = 8; // screen px
@@ -36,6 +38,7 @@ export interface CanvasProps {
   doc: CircuitDocument;
   version: number;
   mode: 'edit' | 'run';
+  lang: Lang;
   snapshot: SimSnapshot | null;
   alert: { elements: Set<number>; lines: Set<number>; phase: boolean } | null;
   onChange(): void;
@@ -61,6 +64,7 @@ type Gesture =
   | { kind: 'line'; line: DLine; moved: boolean }
   | { kind: 'dot'; dot: DDot; moved: boolean }
   | { kind: 'wire'; from: CP }
+  | { kind: 'summary'; startDoc: Pt; startLoc: Pt; moved: boolean }
   | { kind: 'press'; index: number; latched: boolean; latch: boolean };
 
 interface View {
@@ -107,6 +111,12 @@ function textAt(doc: CircuitDocument, p: Pt, slack: number): DText | null {
   return null;
 }
 
+function summaryAt(doc: CircuitDocument, layout: { width: number; height: number } | null, p: Pt): boolean {
+  if (!layout || !doc.summary?.visible) return false;
+  const { x, y } = doc.summary.location;
+  return p.x >= x && p.x <= x + layout.width && p.y >= y && p.y <= y + layout.height;
+}
+
 function labelAt(doc: CircuitDocument, p: Pt, slack: number, onlySelected: boolean): { el: DElement; which: 1 | 2 } | null {
   for (let i = doc.elements.length - 1; i >= 0; i--) {
     const e = doc.elements[i];
@@ -138,6 +148,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
   const [wire, setWire] = useState<WireDraft | null>(null);
   const [hoverPin, setHoverPin] = useState<Pt | null>(null);
   const propsRef = useRef(props);
+  const summary = useMemo(
+    () => (props.doc.summary?.visible ? summaryLayout(props.doc, props.lang) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [props.doc, props.version, props.lang],
+  );
+  const summaryRef = useRef(summary);
+  summaryRef.current = summary;
   propsRef.current = props;
 
   const applyView = useCallback(() => {
@@ -296,8 +313,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
     const r = hitRadius();
     const right = ev.button === 2;
 
+    const onSummary = summaryAt(doc, summaryRef.current, p);
     if (mode === 'run') {
-      const el = elementAt(doc, p, Math.max(2, 6 / view.current.k));
+      const el = onSummary ? null : elementAt(doc, p, Math.max(2, 6 / view.current.k));
       if (el && PRESSABLE.includes(el.type)) {
         const index = doc.elements.indexOf(el);
         gesture.current = { kind: 'press', index, latched: false, latch: right };
@@ -326,6 +344,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
         onChange();
         propsRef.current.onContextMenu(el, ev.clientX, ev.clientY);
       }
+      return;
+    }
+
+    if (onSummary && !right) {
+      // pnlSummary_MouseDown/MouseMove: the list is dragged directly.
+      gesture.current = { kind: 'summary', startDoc: p, startLoc: { ...doc.summary!.location }, moved: false };
       return;
     }
 
@@ -488,6 +512,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
         onChange();
         return;
       }
+      case 'summary': {
+        if (!g.moved && dist <= TAP_SLOP / 2) return;
+        g.moved = true;
+        doc.moveSummary({ x: g.startLoc.x + p.x - g.startDoc.x, y: g.startLoc.y + p.y - g.startDoc.y });
+        onChange();
+        return;
+      }
       case 'label': {
         if (!g.moved && dist <= TAP_SLOP / 2) return;
         g.moved = true;
@@ -578,6 +609,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
         return;
       case 'text':
         if (!g.moved) handleTap(g.t, p);
+        return;
+      case 'summary':
         return;
       case 'group':
         if (!g.moved) {
@@ -670,6 +703,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
           alert={props.alert}
           wire={wire}
           hoverPin={props.mode === 'edit' ? hoverPin : null}
+          summary={summary}
         />
       </g>
     </svg>

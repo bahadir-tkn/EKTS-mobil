@@ -7,6 +7,7 @@
 import React, { memo } from 'react';
 import type { CircuitDocument, DElement, DLine, DDot, Pt } from '../ekts/document';
 import type { SimSnapshot } from '../ekts/simulator';
+import { SummaryTable, type SummaryLayout } from './Summary';
 import { COLORS, ElementSymbol, FONT_FAMILY, LABEL_FONT_SIZE, ELEMENT_FONT_SIZE, type SystemState } from '../ekts/Symbol';
 
 const SELECTED_BG = 'rgb(220,220,220)';
@@ -29,6 +30,8 @@ export interface DrawingProps {
   wire: WireDraft | null;
   /** Free pin under the finger before a wire starts (the red hover dot). */
   hoverPin: Pt | null;
+  /** The used-elements list, when shown (drawn above the circuit, like pnlSummary). */
+  summary: SummaryLayout | null;
 }
 
 /** Approximate box of a 9 px label, for drawing its selection background and for touch. */
@@ -179,6 +182,7 @@ export function Drawing(p: DrawingProps) {
           </g>
         );
       })}
+      {p.summary && doc.summary && <SummaryTable layout={p.summary} x={doc.summary.location.x} y={doc.summary.location.y} />}
       {p.hoverPin && <circle cx={p.hoverPin.x + 0.5} cy={p.hoverPin.y + 0.5} r={4} fill={RED} />}
       {p.wire && (
         <>

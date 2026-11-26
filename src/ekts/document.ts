@@ -403,6 +403,22 @@ export class CircuitDocument {
     this.touch(false);
   }
 
+  /** pnlMainShowSum(b): show or hide the used-elements list (deselects first). */
+  showSummary(b: boolean, viewOrigin: Pt = { x: 0, y: 0 }) {
+    this.deselect(null);
+    // The panel first appears at (40, 168) of the visible area.
+    if (!this.summary) this.summary = { visible: b, location: { x: Math.round(viewOrigin.x) + 40, y: Math.round(viewOrigin.y) + 168 } };
+    else this.summary = { ...this.summary, visible: b };
+    this.touch();
+  }
+
+  /** pnlSummary_MouseMove: drag the list. */
+  moveSummary(loc: Pt) {
+    if (!this.summary) return;
+    this.summary = { ...this.summary, location: { x: Math.round(loc.x), y: Math.round(loc.y) } };
+    this.touch();
+  }
+
   selectAll() {
     for (const e of this.elements) e.selected = true;
     for (const l of this.lines) l.selected = true;
