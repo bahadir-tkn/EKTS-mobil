@@ -12,6 +12,7 @@ import { Canvas, type CanvasHandle } from './ui/Canvas';
 import { MenuBar, StatusBar, Toolbar, type Menu, type MenuItem } from './ui/Chrome';
 import { ChoiceDialog, ContextMenu, MessageBox, PromptDialog } from './ui/Dialogs';
 import { Library } from './ui/Library';
+import { Help } from './ui/Help';
 import { loadPageSettings, PageSetupDialog, PrintPreview, savePageSettings, type PageSettings } from './ui/Printing';
 import { exportImage, IMAGE_FORMATS, type ImageFormat } from './ui/exportImage';
 import { caption, LANGS, type Lang } from './ui/strings';
@@ -95,6 +96,7 @@ export default function App() {
   const [showLimits, setShowLimits] = useState(false);
   const [preview, setPreview] = useState(false);
   const [pageSetup, setPageSetup] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   /** mnuFilePrintPrev_Click: deselect, then show the preview. */
   const openPreview = () => {
     doc.deselect(null);
@@ -450,10 +452,33 @@ export default function App() {
         e.preventDefault();
         redo();
       }
-      else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+      else if (mod && e.key.toLowerCase() === 'a') {
         e.preventDefault();
         doc.selectAll();
         changed();
+      } else if (mod && e.key.toLowerCase() === 'd') {
+        // The original's menu shortcuts (Ctrl+N, O, S, P, D, L and F1).
+        e.preventDefault();
+        doc.deselect(null);
+        bump();
+      } else if (mod && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        newFile();
+      } else if (mod && e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        openFile();
+      } else if (mod && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveAs();
+      } else if (mod && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        openPreview();
+      } else if (mod && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        setLibraryOpen((v) => !v);
+      } else if (e.key === 'F1') {
+        e.preventDefault();
+        setHelpOpen(true);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -537,6 +562,7 @@ export default function App() {
       label: t('mnuHelp'),
       disabled: running,
       items: [
+        { label: t('mnuHelpHelp'), onClick: () => setHelpOpen(true) },
         { label: t('mnuHelpWeb'), onClick: () => window.open('https://veppa.com/ekts/elektrik-kumanda-teknikleri-simulatoru-ekts-kilavuzu/', '_blank', 'noopener') },
         {
           label: t('mnuHelpAbout').replace('ESCS', 'EKTS'),
@@ -651,6 +677,7 @@ export default function App() {
         {preview && !running && (
           <PrintPreview doc={doc} lang={lang} settings={pageSettings} onSettings={() => setPageSetup(true)} onClose={() => setPreview(false)} />
         )}
+        {helpOpen && <Help lang={lang} onClose={() => setHelpOpen(false)} />}
         {pageSetup && (
           <PageSetupDialog
             lang={lang}

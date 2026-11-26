@@ -657,3 +657,50 @@ button {
     display: block;
   }
 }
+
+/* ---- help window ---- */
+.help-toc {
+  flex: 1;
+  overflow: auto;
+  background: #fff;
+}
+
+.help-toc .list-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.help-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.help-page {
+  flex: 1;
+  overflow: auto;
+  background: #fff;
+  padding: 12px;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+}
+
+.help-notes h2 {
+  color: #006699;
+  font-size: 18px;
+}
+
+.help-notes table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.help-notes th,
+.help-notes td {
+  border: 1px solid #ccc;
+  padding: 6px;
+  text-align: left;
+  vertical-align: top;
+}
