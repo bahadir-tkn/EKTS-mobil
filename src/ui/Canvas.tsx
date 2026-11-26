@@ -44,6 +44,8 @@ export interface CanvasProps {
   onContextMenu(e: DElement, clientX: number, clientY: number): void;
   onEditLabel(e: DElement, which: 1 | 2): void;
   onZoom?(k: number): void;
+  /** A touch or click has finished; whatever it changed is one undo step. */
+  onCommit?(): void;
 }
 
 type Gesture =
@@ -583,8 +585,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
       className="canvas"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
+      onPointerUp={(e) => {
+        onPointerUp(e);
+        if (pointers.current.size === 0) propsRef.current.onCommit?.();
+      }}
+      onPointerCancel={(e) => {
+        onPointerCancel(e);
+        if (pointers.current.size === 0) propsRef.current.onCommit?.();
+      }}
       onPointerLeave={() => setHoverPin(null)}
       onWheel={onWheel}
       onContextMenu={(e) => e.preventDefault()}

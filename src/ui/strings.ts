@@ -401,6 +401,8 @@ export const CAPTIONS: Record<string, { tr: string; en: string }> = {
 
 /** Texts the desktop program did not need. */
 export const MOBILE: Record<string, { tr: string; en: string }> = {
+  undo: { tr: 'Geri Al', en: 'Undo' },
+  redo: { tr: 'Yinele', en: 'Redo' },
   examples: { tr: 'Örnek Devreler', en: 'Example Circuits' },
   fit: { tr: 'Ekrana Sığdır', en: 'Fit to Screen' },
   rename: { tr: 'İsim ver…', en: 'Name…' },
