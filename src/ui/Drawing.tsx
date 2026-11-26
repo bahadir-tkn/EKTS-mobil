@@ -7,6 +7,7 @@
 import React, { memo } from 'react';
 import type { CircuitDocument, DElement, DLine, DDot, Pt } from '../ekts/document';
 import type { SimSnapshot } from '../ekts/simulator';
+import { SummaryTable, type SummaryLayout } from './Summary';
 import { COLORS, ElementSymbol, FONT_FAMILY, LABEL_FONT_SIZE, ELEMENT_FONT_SIZE, type SystemState } from '../ekts/Symbol';
 
 const SELECTED_BG = 'rgb(220,220,220)';
@@ -29,6 +30,15 @@ export interface DrawingProps {
   wire: WireDraft | null;
   /** Free pin under the finger before a wire starts (the red hover dot). */
   hoverPin: Pt | null;
+  /** The used-elements list, when shown (drawn above the circuit, like pnlSummary). */
+  summary: SummaryLayout | null;
+  /**
+   * paintCircuit for "save as image" and printing: black wires, no selection,
+   * description texts as wrapped SVG text instead of an HTML box.
+   */
+  plain?: boolean;
+  /** Line breaking for plain description texts (needs text measuring). */
+  wrapText?: (text: string, width: number) => string[];
 }
 
 /** Approximate box of a 9 px label, for drawing its selection background and for touch. */
@@ -82,6 +92,7 @@ const Label = memo(function Label({ text, x, y, bg }: { text: string; x: number;
 });
 
 function lineColor(l: DLine, i: number, p: DrawingProps) {
+  if (p.plain) return COLORS.black;
   if (p.alert?.lines.has(i)) return p.alert.phase ? RED : YELLOW;
   if (p.snapshot?.activeLines[i]) return COLORS.violet;
   if (l.selected) return RED;
@@ -109,14 +120,14 @@ export function Drawing(p: DrawingProps) {
           key={`d${i}`}
           cx={d.origin.x + 0.5}
           cy={d.origin.y + 0.5}
-          r={d.selected ? 3.5 : 2}
-          fill={d.selected ? RED : COLORS.black}
+          r={d.selected && !p.plain ? 3.5 : 2}
+          fill={d.selected && !p.plain ? RED : COLORS.black}
         />
       ))}
       {doc.elements.map((e, i) => {
         const s = e.size;
         const alerted = p.alert?.elements.has(i);
-        const bg = alerted ? (p.alert!.phase ? RED : YELLOW) : e.selected ? SELECTED_BG : null;
+        const bg = p.plain ? null : alerted ? (p.alert!.phase ? RED : YELLOW) : e.selected ? SELECTED_BG : null;
         return (
           <ElementView
             key={`e${i}`}
@@ -136,22 +147,67 @@ export function Drawing(p: DrawingProps) {
       })}
       {doc.elements.map((e, i) => (
         <React.Fragment key={`t${i}`}>
-          <Label text={e.label} x={e.labelLocation.x} y={e.labelLocation.y} bg={e.selected ? SELECTED_BG : null} />
+          <Label text={e.label} x={e.labelLocation.x} y={e.labelLocation.y} bg={e.selected && !p.plain ? SELECTED_BG : null} />
           {e.label2Enabled && (
             <Label
               text={snapshot?.label2Text[i] ?? e.label2}
               x={e.label2Location.x}
               y={e.label2Location.y}
-              bg={e.selected ? SELECTED_BG : null}
+              bg={e.selected && !p.plain ? SELECTED_BG : null}
             />
           )}
         </React.Fragment>
       ))}
-      {doc.texts.map((t, i) => (
-        <foreignObject key={`x${i}`} x={t.location.x} y={t.location.y} width={Math.max(t.size.width, 200)} height={Math.max(t.size.height, 40)}>
-          <div style={{ fontFamily: FONT_FAMILY, fontSize: ELEMENT_FONT_SIZE, whiteSpace: 'pre-wrap', color: '#000' }}>{t.text}</div>
-        </foreignObject>
-      ))}
+      {doc.texts.map((t, i) => {
+        const w = t.size.width || 100;
+        const h = t.size.height || 23;
+        if (p.plain) {
+          const lines = p.wrapText ? p.wrapText(t.text, w) : t.text.split('\n');
+          return (
+            <g key={`x${i}`}>
+              <clipPath id={`xc${i}`}>
+                <rect x={t.location.x} y={t.location.y} width={w} height={h} />
+              </clipPath>
+              <text clipPath={`url(#xc${i})`} fontFamily={FONT_FAMILY} fontSize={ELEMENT_FONT_SIZE} fill="#000" dominantBaseline="hanging">
+                {lines.map((ln, j) => (
+                  <tspan key={j} x={t.location.x + 2} y={t.location.y + 1 + j * 13}>
+                    {ln}
+                  </tspan>
+                ))}
+              </text>
+            </g>
+          );
+        }
+        return (
+          <g key={`x${i}`}>
+            {t.selected && <rect x={t.location.x} y={t.location.y} width={w} height={h} fill="rgb(255,255,192)" />}
+            <foreignObject x={t.location.x} y={t.location.y} width={w} height={h}>
+              <div
+                style={{
+                  fontFamily: FONT_FAMILY,
+                  fontSize: ELEMENT_FONT_SIZE,
+                  lineHeight: '13px',
+                  whiteSpace: 'pre-wrap',
+                  overflowWrap: 'break-word',
+                  overflow: 'hidden',
+                  width: w,
+                  height: h,
+                  color: '#000',
+                }}
+              >
+                {t.text}
+              </div>
+            </foreignObject>
+            {t.selected && (
+              <>
+                <rect x={t.location.x + 0.5} y={t.location.y + 0.5} width={w - 1} height={h - 1} fill="none" stroke="#000" strokeWidth={1} />
+                <rect x={t.location.x + w - 6} y={t.location.y + h - 6} width={6} height={6} fill="#000" />
+              </>
+            )}
+          </g>
+        );
+      })}
+      {p.summary && doc.summary && <SummaryTable layout={p.summary} x={doc.summary.location.x} y={doc.summary.location.y} />}
       {p.hoverPin && <circle cx={p.hoverPin.x + 0.5} cy={p.hoverPin.y + 0.5} r={4} fill={RED} />}
       {p.wire && (
         <>

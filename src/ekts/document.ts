@@ -163,7 +163,11 @@ export interface DText {
   location: Pt;
   size: { width: number; height: number };
   text: string;
+  selected?: boolean;
 }
+
+/** A new System.Windows.Forms.Label is 100 × 23. */
+export const TEXT_DEFAULT_SIZE = { width: 100, height: 23 };
 
 export type DObject = DElement | DLine | DDot;
 
@@ -394,8 +398,25 @@ export class CircuitDocument {
     for (const e of this.elements) if (e.selected) this.setSelected(e, false);
     for (const l of this.lines) if (l.selected) this.setSelected(l, false);
     for (const d of this.dots) if (d.selected) this.setSelected(d, false);
+    for (const t of this.texts) t.selected = false;
     if (o) this.setSelected(o, true);
     this.touch(false);
+  }
+
+  /** pnlMainShowSum(b): show or hide the used-elements list (deselects first). */
+  showSummary(b: boolean, viewOrigin: Pt = { x: 0, y: 0 }) {
+    this.deselect(null);
+    // The panel first appears at (40, 168) of the visible area.
+    if (!this.summary) this.summary = { visible: b, location: { x: Math.round(viewOrigin.x) + 40, y: Math.round(viewOrigin.y) + 168 } };
+    else this.summary = { ...this.summary, visible: b };
+    this.touch();
+  }
+
+  /** pnlSummary_MouseMove: drag the list. */
+  moveSummary(loc: Pt) {
+    if (!this.summary) return;
+    this.summary = { ...this.summary, location: { x: Math.round(loc.x), y: Math.round(loc.y) } };
+    this.touch();
   }
 
   selectAll() {
@@ -1024,8 +1045,40 @@ export class CircuitDocument {
 
   // ---- description texts ------------------------------------------------------------------
 
-  addText(text: string, at: Pt) {
-    this.texts.push({ location: { ...at }, size: { width: 0, height: 0 }, text });
+  /** mnuEditAddtext: a text label at (5, 5) of the visible area. */
+  addText(text: string, viewOrigin: Pt = pt(0, 0)): DText {
+    const t: DText = { location: pt(viewOrigin.x + 5, viewOrigin.y + 5), size: { ...TEXT_DEFAULT_SIZE }, text };
+    this.texts.push(t);
+    this.touch();
+    return t;
+  }
+
+  selectText(t: DText) {
+    this.deselect(null);
+    t.selected = true;
+    this.touch(false);
+  }
+
+  /** textBox2_Validated: an emptied text gets the placeholder back. */
+  setText(t: DText, text: string, placeholder: string) {
+    t.text = text === '' ? placeholder : text;
+    this.touch();
+  }
+
+  moveText(t: DText, p: Pt) {
+    t.location = { ...p };
+    this.touch();
+  }
+
+  /** Dragging the lower right corner; the original kept it larger than 10 × 10. */
+  resizeText(t: DText, width: number, height: number) {
+    if (width > 10 && height > 10) t.size = { width, height };
+    this.touch();
+  }
+
+  /** cntMenuRemoveText */
+  removeText(t: DText) {
+    this.texts = this.texts.filter((x) => x !== t);
     this.touch();
   }
 }

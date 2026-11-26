@@ -12,11 +12,15 @@
  * in for the right mouse button (context menu while editing, latching a
  * button while running).
  */
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { CircuitDocument, CP, DDot, DElement, DLine, RADIUS, type DObject, type Pt } from '../ekts/document';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { CircuitDocument, CP, DDot, DElement, DLine, RADIUS, type DObject, type DText, type Pt } from '../ekts/document';
 import type { SimSnapshot } from '../ekts/simulator';
 import { rotatedSize } from '../ekts/elements';
 import { Drawing, labelBox, type WireDraft } from './Drawing';
+import { summaryLayout } from './Summary';
+import { drawingExtent } from './exportImage';
+import { marginBounds, PageLimits, type PageSettings } from './Printing';
+import type { Lang } from './strings';
 
 const PRESSABLE = ['Role', 'StartButon', 'StopButon', 'StartStopButon', 'SinirAnahtar', 'Startx3', 'Start3x3', 'SinirAnahtar2'];
 const TAP_SLOP = 8; // screen px
@@ -36,6 +40,9 @@ export interface CanvasProps {
   doc: CircuitDocument;
   version: number;
   mode: 'edit' | 'run';
+  lang: Lang;
+  /** "Sayfa sınırlarını göster": page edges for these settings, in edit mode. */
+  pageLimits: PageSettings | null;
   snapshot: SimSnapshot | null;
   alert: { elements: Set<number>; lines: Set<number>; phase: boolean } | null;
   onChange(): void;
@@ -43,6 +50,8 @@ export interface CanvasProps {
   onRelease(index: number, latch: boolean): void;
   onContextMenu(e: DElement, clientX: number, clientY: number): void;
   onEditLabel(e: DElement, which: 1 | 2): void;
+  onEditText(t: DText): void;
+  onTextMenu(t: DText, clientX: number, clientY: number): void;
   onZoom?(k: number): void;
   /** A touch or click has finished; whatever it changed is one undo step. */
   onCommit?(): void;
@@ -50,7 +59,8 @@ export interface CanvasProps {
 
 type Gesture =
   | { kind: 'none' }
-  | { kind: 'tap'; target: DObject | null; startView: View; moved: boolean }
+  | { kind: 'tap'; target: DObject | DText | null; startView: View; moved: boolean }
+  | { kind: 'text'; t: DText; resize: boolean; startDoc: Pt; startLoc: Pt; startSize: { width: number; height: number }; moved: boolean }
   | { kind: 'pinch'; startView: View; a0: Pt; b0: Pt }
   | { kind: 'element'; el: DElement; startDoc: Pt; startLoc: Pt; moved: boolean }
   | { kind: 'group'; items: Set<DObject>; last: Pt; moved: boolean }
@@ -58,6 +68,7 @@ type Gesture =
   | { kind: 'line'; line: DLine; moved: boolean }
   | { kind: 'dot'; dot: DDot; moved: boolean }
   | { kind: 'wire'; from: CP }
+  | { kind: 'summary'; startDoc: Pt; startLoc: Pt; moved: boolean }
   | { kind: 'press'; index: number; latched: boolean; latch: boolean };
 
 interface View {
@@ -93,6 +104,23 @@ function insideElement(e: DElement, p: Pt) {
   return p.x > e.location.x && p.x < e.location.x + s.width && p.y > e.location.y && p.y < e.location.y + s.height;
 }
 
+function textAt(doc: CircuitDocument, p: Pt, slack: number): DText | null {
+  for (let i = doc.texts.length - 1; i >= 0; i--) {
+    const t = doc.texts[i];
+    const w = t.size.width || 100;
+    const h = t.size.height || 23;
+    if (p.x >= t.location.x - slack && p.x <= t.location.x + w + slack && p.y >= t.location.y - slack && p.y <= t.location.y + h + slack)
+      return t;
+  }
+  return null;
+}
+
+function summaryAt(doc: CircuitDocument, layout: { width: number; height: number } | null, p: Pt): boolean {
+  if (!layout || !doc.summary?.visible) return false;
+  const { x, y } = doc.summary.location;
+  return p.x >= x && p.x <= x + layout.width && p.y >= y && p.y <= y + layout.height;
+}
+
 function labelAt(doc: CircuitDocument, p: Pt, slack: number, onlySelected: boolean): { el: DElement; which: 1 | 2 } | null {
   for (let i = doc.elements.length - 1; i >= 0; i--) {
     const e = doc.elements[i];
@@ -115,7 +143,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
   const gesture = useRef<Gesture>({ kind: 'none' });
   const downAt = useRef<Pt>({ x: 0, y: 0 });
   const longTimer = useRef<number | null>(null);
-  const lastTap = useRef<{ t: number; target: DObject | null; label: { el: DElement; which: 1 | 2 } | null }>({
+  const lastTap = useRef<{ t: number; target: DObject | DText | null; label: { el: DElement; which: 1 | 2 } | null }>({
     t: 0,
     target: null,
     label: null,
@@ -124,6 +152,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
   const [wire, setWire] = useState<WireDraft | null>(null);
   const [hoverPin, setHoverPin] = useState<Pt | null>(null);
   const propsRef = useRef(props);
+  const summary = useMemo(
+    () => (props.doc.summary?.visible ? summaryLayout(props.doc, props.lang) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [props.doc, props.version, props.lang],
+  );
+  const summaryRef = useRef(summary);
+  summaryRef.current = summary;
   propsRef.current = props;
 
   const applyView = useCallback(() => {
@@ -282,8 +317,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
     const r = hitRadius();
     const right = ev.button === 2;
 
+    const onSummary = summaryAt(doc, summaryRef.current, p);
     if (mode === 'run') {
-      const el = elementAt(doc, p, Math.max(2, 6 / view.current.k));
+      const el = onSummary ? null : elementAt(doc, p, Math.max(2, 6 / view.current.k));
       if (el && PRESSABLE.includes(el.type)) {
         const index = doc.elements.indexOf(el);
         gesture.current = { kind: 'press', index, latched: false, latch: right };
@@ -315,6 +351,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
       return;
     }
 
+    if (onSummary && !right) {
+      // pnlSummary_MouseDown/MouseMove: the list is dragged directly.
+      gesture.current = { kind: 'summary', startDoc: p, startLoc: { ...doc.summary!.location }, moved: false };
+      return;
+    }
+
     const grp = group.current;
     if (grp) {
       const el = elementAt(doc, p, 2 / view.current.k);
@@ -322,6 +364,30 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
         gesture.current = { kind: 'group', items: grp, last: { x: Math.round(p.x), y: Math.round(p.y) }, moved: false };
         return;
       }
+    }
+
+    const txt = textAt(doc, p, 2 / view.current.k);
+    if (txt) {
+      const w = txt.size.width || 100;
+      const h = txt.size.height || 23;
+      const grip = Math.max(10, 16 / view.current.k);
+      if (txt.selected) {
+        const resize = p.x > txt.location.x + w - grip && p.y > txt.location.y + h - grip;
+        gesture.current = { kind: 'text', t: txt, resize, startDoc: p, startLoc: { ...txt.location }, startSize: { width: w, height: h }, moved: false };
+      } else {
+        gesture.current = { kind: 'tap', target: txt, startView: { ...view.current }, moved: false };
+      }
+      longTimer.current = window.setTimeout(() => {
+        const g = gesture.current;
+        const still = (g.kind === 'tap' && !g.moved) || (g.kind === 'text' && !g.moved);
+        if (!still) return;
+        gesture.current = { kind: 'none' };
+        doc.selectText(txt);
+        onChange();
+        navigator.vibrate?.(15);
+        propsRef.current.onTextMenu(txt, downAt.current.x, downAt.current.y);
+      }, LONG_PRESS_MS);
+      return;
     }
 
     const lab = labelAt(doc, p, 3 / view.current.k, true);
@@ -440,6 +506,23 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
         onChange();
         return;
       }
+      case 'text': {
+        if (!g.moved && dist <= TAP_SLOP / 2) return;
+        g.moved = true;
+        const dx = Math.round(p.x - g.startDoc.x);
+        const dy = Math.round(p.y - g.startDoc.y);
+        if (g.resize) doc.resizeText(g.t, g.startSize.width + dx, g.startSize.height + dy);
+        else doc.moveText(g.t, { x: g.startLoc.x + dx, y: g.startLoc.y + dy });
+        onChange();
+        return;
+      }
+      case 'summary': {
+        if (!g.moved && dist <= TAP_SLOP / 2) return;
+        g.moved = true;
+        doc.moveSummary({ x: g.startLoc.x + p.x - g.startDoc.x, y: g.startLoc.y + p.y - g.startDoc.y });
+        onChange();
+        return;
+      }
       case 'label': {
         if (!g.moved && dist <= TAP_SLOP / 2) return;
         g.moved = true;
@@ -528,6 +611,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
       case 'label':
         if (!g.moved) handleTap(g.el, p);
         return;
+      case 'text':
+        if (!g.moved) handleTap(g.t, p);
+        return;
+      case 'summary':
+        return;
       case 'group':
         if (!g.moved) {
           const el = elementAt(doc, p, 2 / view.current.k);
@@ -539,8 +627,22 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
     }
   };
 
-  const handleTap = (target: DObject | null, p: Pt) => {
+  const handleTap = (target: DObject | DText | null, p: Pt) => {
     const { doc, onChange, onEditLabel } = propsRef.current;
+    if (target && !(target instanceof DElement) && !(target instanceof DLine) && !(target instanceof DDot)) {
+      // A description text: double tap edits it (lblText_DoubleClick).
+      const now = performance.now();
+      const prev = lastTap.current;
+      lastTap.current = { t: now, target, label: null };
+      group.current = null;
+      if (now - prev.t < DOUBLE_TAP_MS && prev.target === target) {
+        propsRef.current.onEditText(target);
+        return;
+      }
+      doc.selectText(target);
+      onChange();
+      return;
+    }
     const now = performance.now();
     const label = labelAt(doc, p, 3 / view.current.k, false);
     const prev = lastTap.current;
@@ -561,7 +663,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
       return;
     }
     group.current = null;
-    doc.deselect(target ?? (label ? label.el : null));
+    doc.deselect((target as DObject | null) ?? (label ? label.el : null));
     onChange();
   };
 
@@ -598,6 +700,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
       onContextMenu={(e) => e.preventDefault()}
     >
       <g ref={gRef}>
+        {props.pageLimits && props.mode === 'edit' && (() => {
+          const ext = drawingExtent(props.doc, summary);
+          const mb = marginBounds(props.pageLimits);
+          return <PageLimits settings={props.pageLimits} width={ext.width + mb.width} height={ext.height + mb.height} />;
+        })()}
         <Drawing
           doc={props.doc}
           version={props.version}
@@ -605,6 +712,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
           alert={props.alert}
           wire={wire}
           hoverPin={props.mode === 'edit' ? hoverPin : null}
+          summary={summary}
         />
       </g>
     </svg>

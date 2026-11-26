@@ -1,0 +1,51 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Examples</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link href="1.css" rel="stylesheet" type="text/css">
+</head>
+<script language="javascript">
+function hide_show(obj){
+	Obj=document.getElementById(obj);
+	if(Obj.style.display!="block"){Obj.style.display="block"}
+	else{Obj.style.display="none"} 	
+}
+</script>
+<body>
+<p><a href="2_7.html">[prew]</a> <a href="3.html">[next] </a></p>
+<h2>Examples</h2>
+<h3><a href="javascript: hide_show('o1')">Example 1 </a></h3>
+<div class="dsp_none" id="o1">
+  <p>Design command and motor circuits to run 3 units of 3 phase induction motors as specified below: </p>
+  <ul>
+    <li>First motor starts to rotate by pressing start button. </li>
+    <li>After 5 seconds second motor starts to rotate. </li>
+    <li>After 5 seconds as second motor runs third motor will start and first motor stops. </li>
+    <li>Second and third motors will stop after 5 second work together. </li>
+    <li>Al motors will stop by pressing stop button at any time. </li>
+    </ul>
+  <p>This circuit is designed as shown in Figure 14. </p>
+  <p><img width="535" height="551" src="2_8_clip_image001.gif"></p>
+  <p class="img_desc"><strong>Figure 15 </strong>3 units of 3 phase motor circuit designed with EKTS. </p>
+  <p>In this circuit “Z1” time relay is used to send pulse in every 5 second. “M1”, “M2” and “M3” relays are used to control 3 phase motors relatively. This relays are controlled by control circuit. </p>
+  <p>&nbsp; </p>
+</div>
+<h3><a href="javascript: hide_show('o2')">Example 2 </a></h3>
+<div class="dsp_none" id="o2">
+  <p>Design command and motor circuits to run two units of 3 phase and one unit 1 phase motors as specified below. </p>
+  <ul>
+    <li>1 phase motor starts after 3 seconds as start button pressed. </li>
+    <li>After 5 seconds as 1 phase motor runs both of 3 phase motors start. </li>
+    <li>After 5 seconds as 3 phase motors start 1 phase motor and one of the 3 phase motors stop. </li>
+    <li>Working 3 phase motor stops after 10 seconds. </li>
+    </ul>
+  <p>This circuit is designed as shown in Figure 15. </p>
+  <p><img width="723" height="700" src="2_8_clip_image002.gif"></p>
+  <p class="img_desc"><strong>Figure 16 </strong>Circuit of one 1 phase and two 3 phase motors designed with EKTS. </p>
+  <p>In this circuit “M1”, “M2” and “M3” relays used to control three motors. Control of this relays is done in command circuit. </p>
+</div>
+</body>
+</html>

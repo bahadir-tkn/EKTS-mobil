@@ -3,7 +3,7 @@
  * and status bar, laid out like the desktop program on a phone screen.
  */
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { CircuitDocument, DElement, LAMP_COLORS, isContact, isTimer } from './ekts/document';
+import { CircuitDocument, DElement, LAMP_COLORS, isContact, isTimer, type DText } from './ekts/document';
 import { Simulator, SIM_MESSAGES, type SimError, type SimSnapshot } from './ekts/simulator';
 import { parseEscFile, EscFormatError, type EscCircuit } from './esc/escFile';
 import { writeEscFile } from './esc/escWriter';
@@ -12,16 +12,29 @@ import { Canvas, type CanvasHandle } from './ui/Canvas';
 import { MenuBar, StatusBar, Toolbar, type Menu, type MenuItem } from './ui/Chrome';
 import { ChoiceDialog, ContextMenu, MessageBox, PromptDialog } from './ui/Dialogs';
 import { Library } from './ui/Library';
-import { caption, type Lang } from './ui/strings';
+import { Help } from './ui/Help';
+import { loadPageSettings, PageSetupDialog, PrintPreview, savePageSettings, type PageSettings } from './ui/Printing';
+import { exportImage, IMAGE_FORMATS, type ImageFormat } from './ui/exportImage';
+import { caption, LANGS, type Lang } from './ui/strings';
 import { EXAMPLES } from './ui/examples';
 import { History } from './ui/history';
 import * as Icons from './ui/icons';
 
 const AUTOSAVE_KEY = 'ekts-mobil:autosave:v2';
+const LANG_KEY = 'ekts-mobil:lang';
 
 type Dialog =
   | { kind: 'message'; title: string; text: string; icon?: 'error' | 'question' | 'info'; buttons: { label: string; onClick: () => void; primary?: boolean }[] }
-  | { kind: 'prompt'; title: string; label: string; initial: string; numeric?: boolean; onOk: (v: string) => void }
+  | {
+      kind: 'prompt';
+      title: string;
+      label: string;
+      initial: string;
+      numeric?: boolean;
+      multiline?: boolean;
+      types?: { label: string; options: string[] };
+      onOk: (v: string, type: number) => void;
+    }
   | { kind: 'choice'; title: string; options: string[]; current: string; onPick: (v: string) => void }
   | { kind: 'context'; x: number; y: number; items: MenuItem[] };
 
@@ -51,7 +64,24 @@ function download(bytes: Uint8Array | Blob, name: string, type: string) {
 }
 
 export default function App() {
-  const [lang] = useState<Lang>('tr');
+  // iLng, kept between sessions like escs.cfg; Turkish until another is picked.
+  const [lang, setLangState] = useState<Lang>(() => {
+    try {
+      const v = localStorage.getItem(LANG_KEY) as Lang | null;
+      if (v && (LANGS as readonly string[]).includes(v)) return v;
+    } catch {
+      /* default */
+    }
+    return 'tr';
+  });
+  const setLang = (l: Lang) => {
+    setLangState(l);
+    try {
+      localStorage.setItem(LANG_KEY, l);
+    } catch {
+      /* not kept */
+    }
+  };
   const t = useCallback((k: string) => caption(k, lang), [lang]);
   const initial = useRef(loadAutosave());
   const [doc, setDoc] = useState<CircuitDocument>(() => initial.current?.doc ?? new CircuitDocument());
@@ -62,6 +92,17 @@ export default function App() {
   const [simError, setSimError] = useState<SimError | null>(null);
   const [blink, setBlink] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [pageSettings, setPageSettings] = useState<PageSettings>(loadPageSettings);
+  const [showLimits, setShowLimits] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const [pageSetup, setPageSetup] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  /** mnuFilePrintPrev_Click: deselect, then show the preview. */
+  const openPreview = () => {
+    doc.deselect(null);
+    bump();
+    setPreview(true);
+  };
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [zoom, setZoom] = useState(1);
   const canvas = useRef<CanvasHandle>(null);
@@ -132,6 +173,16 @@ export default function App() {
     }
   };
 
+  /** pnlMain_SaveImage: the picture is written, the circuit's own file name stays. */
+  const saveImage = (name: string, format: ImageFormat) => {
+    const base = name.replace(/\.(esc|bmp|gif|jpe?g|png)$/i, '');
+    exportImage(doc, lang, format)
+      .then((blob) => download(blob, `${base}.${format}`, blob.type))
+      .catch((e) =>
+        setDialog({ kind: 'message', title: 'EKTS', text: String((e as Error).message), icon: 'error', buttons: [{ label: t('ok'), primary: true, onClick: () => setDialog(null) }] }),
+      );
+  };
+
   /** pnlMain_New's question before throwing the current circuit away. */
   const confirmDiscard = (then: () => void) => {
     if (!doc.changed) {
@@ -191,6 +242,13 @@ export default function App() {
     changed();
   };
 
+  const summaryShown = !!doc.summary?.visible;
+  const toggleSummary = () => {
+    if (running) return;
+    doc.showSummary(!summaryShown, canvas.current?.viewOrigin() ?? { x: 0, y: 0 });
+    changed();
+  };
+
   const deleteSelection = () => {
     doc.deleteSelected();
     changed();
@@ -239,6 +297,43 @@ export default function App() {
         changed();
       },
     });
+  };
+
+  const editText = (tx: DText) =>
+    setDialog({
+      kind: 'prompt',
+      title: t('cmtEdit'),
+      label: '',
+      initial: tx.text,
+      multiline: true,
+      onOk: (v) => {
+        setDialog(null);
+        doc.setText(tx, v, t('tbText'));
+        changed();
+      },
+    });
+
+  const textMenu = (tx: DText, x: number, y: number) =>
+    setDialog({
+      kind: 'context',
+      x,
+      y,
+      items: [
+        { label: t('cmtEdit'), onClick: () => editText(tx) },
+        {
+          label: t('cmtRemove'),
+          onClick: () => {
+            doc.removeText(tx);
+            changed();
+          },
+        },
+      ],
+    });
+
+  const addText = () => {
+    const tx = doc.addText(t('tbText'), canvas.current?.viewOrigin() ?? { x: 0, y: 0 });
+    doc.selectText(tx);
+    changed();
   };
 
   const contextMenu = (el: DElement, x: number, y: number) => {
@@ -357,10 +452,33 @@ export default function App() {
         e.preventDefault();
         redo();
       }
-      else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+      else if (mod && e.key.toLowerCase() === 'a') {
         e.preventDefault();
         doc.selectAll();
         changed();
+      } else if (mod && e.key.toLowerCase() === 'd') {
+        // The original's menu shortcuts (Ctrl+N, O, S, P, D, L and F1).
+        e.preventDefault();
+        doc.deselect(null);
+        bump();
+      } else if (mod && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        newFile();
+      } else if (mod && e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        openFile();
+      } else if (mod && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveAs();
+      } else if (mod && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        openPreview();
+      } else if (mod && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        setLibraryOpen((v) => !v);
+      } else if (e.key === 'F1') {
+        e.preventDefault();
+        setHelpOpen(true);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -388,12 +506,20 @@ export default function App() {
               title: t('mnuFileSaveAs'),
               label: t('name'),
               initial: displayName.replace(/\.esc$/i, ''),
-              onOk: (v) => {
+              // The original's Save As filter: EKTS files or one of four picture formats.
+              types: { label: t('fileType'), options: ['EKTS files (*.esc)', ...IMAGE_FORMATS.map((f) => f.label)] },
+              onOk: (v, type) => {
                 setDialog(null);
-                if (v.trim()) saveAs(v.trim());
+                const name = v.trim();
+                if (!name) return;
+                if (type === 0) saveAs(name);
+                else saveImage(name, IMAGE_FORMATS[type - 1].format);
               },
             }),
         },
+        'sep',
+        { label: t('mnuFilePrintPrev'), onClick: openPreview },
+        { label: `${t('mnuFilePrintSet')}…`, onClick: () => setPageSetup(true) },
       ],
     },
     {
@@ -403,6 +529,7 @@ export default function App() {
         { label: t('undo'), onClick: undo, disabled: !history.current.canUndo },
         { label: t('redo'), onClick: redo, disabled: !history.current.canRedo },
         'sep',
+        { label: t('mnuEditAddText'), onClick: addText },
         {
           label: t('mnuEditSelectAll'),
           onClick: () => {
@@ -424,7 +551,10 @@ export default function App() {
       label: t('mnuWindow'),
       disabled: running,
       items: [
+        { label: t('mnuWindowLang'), submenu: LANGS.map((l) => ({ label: caption('mnuLng', l), checked: l === lang, onClick: () => setLang(l) })) },
         { label: t('mnuWindowLibrary'), checked: libraryOpen, onClick: () => setLibraryOpen(!libraryOpen) },
+        { label: t('mnuWindowSummary'), checked: summaryShown, onClick: toggleSummary },
+        { label: t('mnuWindowLimits'), checked: showLimits, onClick: () => setShowLimits(!showLimits) },
         { label: t('fit'), onClick: () => canvas.current?.fit() },
       ],
     },
@@ -432,6 +562,7 @@ export default function App() {
       label: t('mnuHelp'),
       disabled: running,
       items: [
+        { label: t('mnuHelpHelp'), onClick: () => setHelpOpen(true) },
         { label: t('mnuHelpWeb'), onClick: () => window.open('https://veppa.com/ekts/elektrik-kumanda-teknikleri-simulatoru-ekts-kilavuzu/', '_blank', 'noopener') },
         {
           label: t('mnuHelpAbout').replace('ESCS', 'EKTS'),
@@ -488,6 +619,14 @@ export default function App() {
             disabled: running || !history.current.canRedo,
           },
           {
+            key: 'print',
+            title: t('tbBtnPrint'),
+            icon: <Icons.IconPrint />,
+            onClick: openPreview,
+            disabled: running,
+            sepBefore: true,
+          },
+          {
             key: 'library',
             title: t('tbBtnLibrary'),
             icon: <Icons.IconLibrary />,
@@ -495,6 +634,14 @@ export default function App() {
             pushed: libraryOpen,
             disabled: running,
             sepBefore: true,
+          },
+          {
+            key: 'sum',
+            title: t('tbBtnSum'),
+            icon: <Icons.IconList />,
+            onClick: toggleSummary,
+            pushed: summaryShown,
+            disabled: running,
           },
           {
             key: 'run',
@@ -512,6 +659,8 @@ export default function App() {
             doc={doc}
             version={doc.version}
             mode={mode}
+            lang={lang}
+            pageLimits={showLimits ? pageSettings : null}
             snapshot={snapshot}
             alert={alert}
             onChange={bump}
@@ -520,9 +669,27 @@ export default function App() {
             onRelease={(i, latch) => sim.current?.pointerUp(i, latch)}
             onContextMenu={contextMenu}
             onEditLabel={editLabel}
+            onEditText={editText}
+            onTextMenu={textMenu}
             onZoom={setZoom}
           />
         </div>
+        {preview && !running && (
+          <PrintPreview doc={doc} lang={lang} settings={pageSettings} onSettings={() => setPageSetup(true)} onClose={() => setPreview(false)} />
+        )}
+        {helpOpen && <Help lang={lang} onClose={() => setHelpOpen(false)} />}
+        {pageSetup && (
+          <PageSetupDialog
+            lang={lang}
+            settings={pageSettings}
+            onOk={(s) => {
+              setPageSettings(s);
+              savePageSettings(s);
+              setPageSetup(false);
+            }}
+            onCancel={() => setPageSetup(false)}
+          />
+        )}
         {libraryOpen && !running && <Library lang={lang} onAdd={addElement} onClose={() => setLibraryOpen(false)} />}
       </div>
       <StatusBar
@@ -558,7 +725,7 @@ export default function App() {
         <MessageBox
           title="EKTS"
           icon="error"
-          text={SIM_MESSAGES[simError.key][lang]}
+          text={simError.key === 'loop' ? SIM_MESSAGES.loop.tr : caption(simError.key, lang)}
           buttons={[{ label: t('ok'), primary: true, onClick: closeSimError }]}
         />
       )}
@@ -569,6 +736,8 @@ export default function App() {
           label={dialog.label}
           initial={dialog.initial}
           numeric={dialog.numeric}
+          multiline={dialog.multiline}
+          types={dialog.types}
           okLabel={t('ok')}
           cancelLabel={t('cancel')}
           onOk={dialog.onOk}

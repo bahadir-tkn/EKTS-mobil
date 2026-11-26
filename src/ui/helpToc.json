@@ -1,0 +1,196 @@
+{
+ "tr": [
+  {
+   "title": "Hakkında",
+   "page": "1.html",
+   "level": 0
+  },
+  {
+   "title": "Kullanım Kılavuzu",
+   "page": "2.html",
+   "level": 0
+  },
+  {
+   "title": "EKTS Kurulumu",
+   "page": "2_1.html",
+   "level": 1
+  },
+  {
+   "title": "Programı Çalıştırmak",
+   "page": "2_2.html",
+   "level": 1
+  },
+  {
+   "title": "Kullanıcı Arabirimi",
+   "page": "2_3.html",
+   "level": 1
+  },
+  {
+   "title": "Dosyalarla Çalışmak",
+   "page": "2_4.html",
+   "level": 1
+  },
+  {
+   "title": "EKTS'de Devre Tasarlamak",
+   "page": "2_5.html",
+   "level": 1
+  },
+  {
+   "title": "Elemanlarla Çalışmak",
+   "page": "2_5_1.html",
+   "level": 2
+  },
+  {
+   "title": "Devre Bağlantıları",
+   "page": "2_5_2.html",
+   "level": 2
+  },
+  {
+   "title": "Düğüm Noktası",
+   "page": "2_5_3.html",
+   "level": 2
+  },
+  {
+   "title": "Açıklama metni",
+   "page": "2_5_4.html",
+   "level": 2
+  },
+  {
+   "title": "Kullanılan Elemanları Listele",
+   "page": "2_5_5.html",
+   "level": 2
+  },
+  {
+   "title": "3 Fazlı Motoru Çalıştırıp-Durduran Devrenin Tasarlanması",
+   "page": "2_5_6.html",
+   "level": 2
+  },
+  {
+   "title": "Tasarlanan Devreyi Çalıştırmak",
+   "page": "2_6.html",
+   "level": 1
+  },
+  {
+   "title": "Yazıcıdan Çıktı Almak",
+   "page": "2_7.html",
+   "level": 1
+  },
+  {
+   "title": "Örnekler",
+   "page": "2_8.html",
+   "level": 1
+  },
+  {
+   "title": "EKTS'yi Kendi Dilinize Çevirin",
+   "page": "3.html",
+   "level": 0
+  },
+  {
+   "title": "Tarihçe",
+   "page": "4.html",
+   "level": 0
+  },
+  {
+   "title": "İletişim Bılgileri",
+   "page": "5.html",
+   "level": 0
+  }
+ ],
+ "en": [
+  {
+   "title": "About",
+   "page": "1.html",
+   "level": 0
+  },
+  {
+   "title": "Using Simulator",
+   "page": "2.html",
+   "level": 0
+  },
+  {
+   "title": "Setup",
+   "page": "2_1.html",
+   "level": 1
+  },
+  {
+   "title": "Run the Program",
+   "page": "2_2.html",
+   "level": 1
+  },
+  {
+   "title": "User Interface",
+   "page": "2_3.html",
+   "level": 1
+  },
+  {
+   "title": "Working with Files",
+   "page": "2_4.html",
+   "level": 1
+  },
+  {
+   "title": "Design a Circuit",
+   "page": "2_5.html",
+   "level": 1
+  },
+  {
+   "title": "Working with Elements",
+   "page": "2_5_1.html",
+   "level": 2
+  },
+  {
+   "title": "Circuit Connections",
+   "page": "2_5_2.html",
+   "level": 2
+  },
+  {
+   "title": "Node",
+   "page": "2_5_3.html",
+   "level": 2
+  },
+  {
+   "title": "Description Text",
+   "page": "2_5_4.html",
+   "level": 2
+  },
+  {
+   "title": "List used Elements",
+   "page": "2_5_5.html",
+   "level": 2
+  },
+  {
+   "title": "Design of 3 Phase Motor Start and Stop Circuit",
+   "page": "2_5_6.html",
+   "level": 2
+  },
+  {
+   "title": "Run Designed Circuit",
+   "page": "2_6.html",
+   "level": 1
+  },
+  {
+   "title": "Print Circuit",
+   "page": "2_7.html",
+   "level": 1
+  },
+  {
+   "title": "Examples",
+   "page": "2_8.html",
+   "level": 1
+  },
+  {
+   "title": "Localize EKTS",
+   "page": "3.html",
+   "level": 0
+  },
+  {
+   "title": "Version History",
+   "page": "4.html",
+   "level": 0
+  },
+  {
+   "title": "Info",
+   "page": "5.html",
+   "level": 0
+  }
+ ]
+}

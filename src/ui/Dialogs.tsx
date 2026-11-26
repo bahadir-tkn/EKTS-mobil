@@ -42,6 +42,8 @@ export function PromptDialog({
   label,
   initial,
   numeric,
+  multiline,
+  types,
   okLabel,
   cancelLabel,
   onOk,
@@ -51,13 +53,17 @@ export function PromptDialog({
   label: string;
   initial: string;
   numeric?: boolean;
+  multiline?: boolean;
+  /** A "Kayıt türü" list under the name, as in the save dialog. */
+  types?: { label: string; options: string[] };
   okLabel: string;
   cancelLabel: string;
-  onOk: (v: string) => void;
+  onOk: (v: string, type: number) => void;
   onCancel: () => void;
 }) {
   const [v, setV] = useState(initial);
-  const ref = useRef<HTMLInputElement>(null);
+  const [type, setType] = useState(0);
+  const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   useEffect(() => {
     ref.current?.select();
   }, []);
@@ -67,23 +73,39 @@ export function PromptDialog({
         className="dialog"
         onSubmit={(e) => {
           e.preventDefault();
-          onOk(v);
+          onOk(v, type);
         }}
       >
         <div className="dialog-title">{title}</div>
         <label className="dialog-field">
           <span>{label}</span>
+          {multiline ? (
+            <textarea ref={ref} autoFocus rows={5} value={v} spellCheck={false} onChange={(e) => setV(e.target.value)} />
+          ) : (
           <input
             ref={ref}
             autoFocus
             value={v}
             inputMode={numeric ? 'numeric' : 'text'}
-            autoCapitalize={numeric ? 'off' : 'characters'}
+            autoCapitalize={numeric || types ? 'off' : 'characters'}
             autoComplete="off"
             spellCheck={false}
             onChange={(e) => setV(numeric ? e.target.value.replace(/\D/g, '') : e.target.value)}
           />
+          )}
         </label>
+        {types && (
+          <label className="dialog-field">
+            <span>{types.label}</span>
+            <select value={type} onChange={(e) => setType(Number(e.target.value))}>
+              {types.options.map((o, i) => (
+                <option key={o} value={i}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="dialog-buttons">
           <button type="submit" className="btn primary">
             {okLabel}
