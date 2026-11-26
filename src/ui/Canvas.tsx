@@ -18,6 +18,8 @@ import type { SimSnapshot } from '../ekts/simulator';
 import { rotatedSize } from '../ekts/elements';
 import { Drawing, labelBox, type WireDraft } from './Drawing';
 import { summaryLayout } from './Summary';
+import { drawingExtent } from './exportImage';
+import { marginBounds, PageLimits, type PageSettings } from './Printing';
 import type { Lang } from './strings';
 
 const PRESSABLE = ['Role', 'StartButon', 'StopButon', 'StartStopButon', 'SinirAnahtar', 'Startx3', 'Start3x3', 'SinirAnahtar2'];
@@ -39,6 +41,8 @@ export interface CanvasProps {
   version: number;
   mode: 'edit' | 'run';
   lang: Lang;
+  /** "Sayfa sınırlarını göster": page edges for these settings, in edit mode. */
+  pageLimits: PageSettings | null;
   snapshot: SimSnapshot | null;
   alert: { elements: Set<number>; lines: Set<number>; phase: boolean } | null;
   onChange(): void;
@@ -696,6 +700,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(prop
       onContextMenu={(e) => e.preventDefault()}
     >
       <g ref={gRef}>
+        {props.pageLimits && props.mode === 'edit' && (() => {
+          const ext = drawingExtent(props.doc, summary);
+          const mb = marginBounds(props.pageLimits);
+          return <PageLimits settings={props.pageLimits} width={ext.width + mb.width} height={ext.height + mb.height} />;
+        })()}
         <Drawing
           doc={props.doc}
           version={props.version}

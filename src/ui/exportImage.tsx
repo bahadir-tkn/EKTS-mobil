@@ -97,11 +97,11 @@ export function circuitSvg(doc: CircuitDocument, lang: Lang) {
   );
   const markup = host.innerHTML;
   root.unmount();
-  return { markup, width, height };
+  return { markup, width, height, left, top };
 }
 
-async function rasterize(doc: CircuitDocument, lang: Lang) {
-  const { markup, width, height } = circuitSvg(doc, lang);
+export async function rasterize(doc: CircuitDocument, lang: Lang) {
+  const { markup, width, height, left, top } = circuitSvg(doc, lang);
   const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' }));
   try {
     const img = new Image();
@@ -118,14 +118,14 @@ async function rasterize(doc: CircuitDocument, lang: Lang) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0);
-    return canvas;
+    return { canvas, left, top };
   } finally {
     URL.revokeObjectURL(url);
   }
 }
 
 export async function exportImage(doc: CircuitDocument, lang: Lang, format: ImageFormat): Promise<Blob> {
-  const canvas = await rasterize(doc, lang);
+  const { canvas } = await rasterize(doc, lang);
   if (format === 'png' || format === 'jpg') {
     return new Promise((ok, fail) =>
       canvas.toBlob((b) => (b ? ok(b) : fail(new Error('encode'))), format === 'png' ? 'image/png' : 'image/jpeg', 0.92),

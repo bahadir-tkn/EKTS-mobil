@@ -12,6 +12,7 @@ import { Canvas, type CanvasHandle } from './ui/Canvas';
 import { MenuBar, StatusBar, Toolbar, type Menu, type MenuItem } from './ui/Chrome';
 import { ChoiceDialog, ContextMenu, MessageBox, PromptDialog } from './ui/Dialogs';
 import { Library } from './ui/Library';
+import { loadPageSettings, PageSetupDialog, PrintPreview, savePageSettings, type PageSettings } from './ui/Printing';
 import { exportImage, IMAGE_FORMATS, type ImageFormat } from './ui/exportImage';
 import { caption, type Lang } from './ui/strings';
 import { EXAMPLES } from './ui/examples';
@@ -72,6 +73,16 @@ export default function App() {
   const [simError, setSimError] = useState<SimError | null>(null);
   const [blink, setBlink] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [pageSettings, setPageSettings] = useState<PageSettings>(loadPageSettings);
+  const [showLimits, setShowLimits] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const [pageSetup, setPageSetup] = useState(false);
+  /** mnuFilePrintPrev_Click: deselect, then show the preview. */
+  const openPreview = () => {
+    doc.deselect(null);
+    bump();
+    setPreview(true);
+  };
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [zoom, setZoom] = useState(1);
   const canvas = useRef<CanvasHandle>(null);
@@ -463,6 +474,9 @@ export default function App() {
               },
             }),
         },
+        'sep',
+        { label: t('mnuFilePrintPrev'), onClick: openPreview },
+        { label: `${t('mnuFilePrintSet')}…`, onClick: () => setPageSetup(true) },
       ],
     },
     {
@@ -496,6 +510,7 @@ export default function App() {
       items: [
         { label: t('mnuWindowLibrary'), checked: libraryOpen, onClick: () => setLibraryOpen(!libraryOpen) },
         { label: t('mnuWindowSummary'), checked: summaryShown, onClick: toggleSummary },
+        { label: t('mnuWindowLimits'), checked: showLimits, onClick: () => setShowLimits(!showLimits) },
         { label: t('fit'), onClick: () => canvas.current?.fit() },
       ],
     },
@@ -559,6 +574,14 @@ export default function App() {
             disabled: running || !history.current.canRedo,
           },
           {
+            key: 'print',
+            title: t('tbBtnPrint'),
+            icon: <Icons.IconPrint />,
+            onClick: openPreview,
+            disabled: running,
+            sepBefore: true,
+          },
+          {
             key: 'library',
             title: t('tbBtnLibrary'),
             icon: <Icons.IconLibrary />,
@@ -592,6 +615,7 @@ export default function App() {
             version={doc.version}
             mode={mode}
             lang={lang}
+            pageLimits={showLimits ? pageSettings : null}
             snapshot={snapshot}
             alert={alert}
             onChange={bump}
@@ -605,6 +629,21 @@ export default function App() {
             onZoom={setZoom}
           />
         </div>
+        {preview && !running && (
+          <PrintPreview doc={doc} lang={lang} settings={pageSettings} onSettings={() => setPageSetup(true)} onClose={() => setPreview(false)} />
+        )}
+        {pageSetup && (
+          <PageSetupDialog
+            lang={lang}
+            settings={pageSettings}
+            onOk={(s) => {
+              setPageSettings(s);
+              savePageSettings(s);
+              setPageSetup(false);
+            }}
+            onCancel={() => setPageSetup(false)}
+          />
+        )}
         {libraryOpen && !running && <Library lang={lang} onAdd={addElement} onClose={() => setLibraryOpen(false)} />}
       </div>
       <StatusBar

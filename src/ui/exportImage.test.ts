@@ -33,3 +33,15 @@ test('picture covers the drawing from the origin', () => {
   assert.equal(e.top, 0);
   assert.ok(e.width > 110 && e.height > 70);
 });
+
+test('pages tile the picture like printDocument1_PrintPage', async () => {
+  const { pageTiles, marginBounds } = await import('./Printing');
+  const s = { paper: 'A4' as const, landscape: false };
+  assert.deepEqual(marginBounds(s), { width: 787, height: 1129 });
+  assert.equal(pageTiles(599, 468, s).length, 1);
+  // Width/bounds + 1 columns, even when the picture fits exactly.
+  const tiles = pageTiles(787, 1200, s);
+  assert.equal(tiles.length, 4);
+  assert.deepEqual(tiles.map((t) => [t.x, t.y]), [[0, 0], [787, 0], [0, 1129], [787, 1129]]);
+  assert.deepEqual(marginBounds({ paper: 'A4', landscape: true }), { width: 1129, height: 787 });
+});

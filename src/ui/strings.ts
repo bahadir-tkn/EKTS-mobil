@@ -421,6 +421,12 @@ export const MOBILE: Record<string, { tr: string; en: string }> = {
   noRelays: { tr: 'Devrede kontaktör veya zaman rölesi yok.', en: 'There is no contactor or time relay in the circuit.' },
   saveImage: { tr: 'Resim Olarak Kaydet', en: 'Save as Image' },
   fileType: { tr: 'Kayıt türü', en: 'Save as type' },
+  pages: { tr: 'sayfa', en: 'pages' },
+  paper: { tr: 'Kağıt', en: 'Paper' },
+  orientation: { tr: 'Yön', en: 'Orientation' },
+  portrait: { tr: 'Dikey', en: 'Portrait' },
+  landscape: { tr: 'Yatay', en: 'Landscape' },
+  printHint: { tr: 'Yazıcı, Yazdır düğmesine basınca açılan pencereden seçilir.', en: 'The printer is chosen in the window that opens when you press Print.' },
   holdHint: {
     tr: 'Düğmeyi basılı bırakmak için parmağınızı yarım saniye tutun (bilgisayardaki sağ tık).',
     en: 'Hold for half a second to latch a button (right click on the desktop).',
