@@ -275,6 +275,16 @@ export class CircuitDocument {
     };
   }
 
+  /** Take over the contents of another document (undo/redo keep the same object). */
+  replaceWith(other: CircuitDocument) {
+    this.elements = other.elements;
+    this.lines = other.lines;
+    this.dots = other.dots;
+    this.texts = other.texts;
+    this.summary = other.summary;
+    this.touch();
+  }
+
   // ---- adding -------------------------------------------------------------------
 
   /** pnlMainAdd: a new element goes to (10, 20) of the visible area, its name above it. */

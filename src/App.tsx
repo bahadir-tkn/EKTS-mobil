@@ -14,6 +14,7 @@ import { ChoiceDialog, ContextMenu, MessageBox, PromptDialog } from './ui/Dialog
 import { Library } from './ui/Library';
 import { caption, type Lang } from './ui/strings';
 import { EXAMPLES } from './ui/examples';
+import { History } from './ui/history';
 import * as Icons from './ui/icons';
 
 const AUTOSAVE_KEY = 'ekts-mobil:autosave:v2';
@@ -67,7 +68,20 @@ export default function App() {
   const sim = useRef<Simulator | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const changed = () => bump();
+  const history = useRef(new History());
+  /** An edit finished: record it as an undo step and redraw. */
+  const changed = () => {
+    history.current.commit(doc);
+    bump();
+  };
+  const undo = () => {
+    history.current.undo(doc);
+    bump();
+  };
+  const redo = () => {
+    history.current.redo(doc);
+    bump();
+  };
 
   // Editing messages (MessageBox in the original).
   useEffect(() => {
@@ -88,6 +102,8 @@ export default function App() {
   });
 
   useEffect(() => {
+    history.current.reset(doc);
+    bump();
     requestAnimationFrame(() => canvas.current?.fit());
   }, [doc]);
 
@@ -332,7 +348,15 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if (dialog || mode !== 'edit') return;
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      const mod = e.ctrlKey || e.metaKey;
       if (e.key === 'Delete') deleteSelection();
+      else if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (mod && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      }
       else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         doc.selectAll();
@@ -376,6 +400,9 @@ export default function App() {
       label: t('mnuEdit'),
       disabled: running,
       items: [
+        { label: t('undo'), onClick: undo, disabled: !history.current.canUndo },
+        { label: t('redo'), onClick: redo, disabled: !history.current.canRedo },
+        'sep',
         {
           label: t('mnuEditSelectAll'),
           onClick: () => {
@@ -447,6 +474,20 @@ export default function App() {
             sepBefore: true,
           },
           {
+            key: 'undo',
+            title: t('undo'),
+            icon: <Icons.IconUndo />,
+            onClick: undo,
+            disabled: running || !history.current.canUndo,
+          },
+          {
+            key: 'redo',
+            title: t('redo'),
+            icon: <Icons.IconRedo />,
+            onClick: redo,
+            disabled: running || !history.current.canRedo,
+          },
+          {
             key: 'library',
             title: t('tbBtnLibrary'),
             icon: <Icons.IconLibrary />,
@@ -473,7 +514,8 @@ export default function App() {
             mode={mode}
             snapshot={snapshot}
             alert={alert}
-            onChange={changed}
+            onChange={bump}
+            onCommit={changed}
             onPress={(i, latch) => sim.current?.pointerDown(i, latch)}
             onRelease={(i, latch) => sim.current?.pointerUp(i, latch)}
             onContextMenu={contextMenu}

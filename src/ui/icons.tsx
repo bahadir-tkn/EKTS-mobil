@@ -94,3 +94,17 @@ export const IconZoomOut = () => (
     <path d="M3 8h10" stroke="#404040" strokeWidth="2" />
   </Svg>
 );
+
+export const IconUndo = () => (
+  <Svg>
+    <path d="M5 3L1.5 6.5 5 10" fill="none" stroke="#2f5fa8" strokeWidth="1.6" shapeRendering="geometricPrecision" />
+    <path d="M2 6.5h7.5a4 4 0 0 1 0 8H6" fill="none" stroke="#2f5fa8" strokeWidth="1.6" shapeRendering="geometricPrecision" />
+  </Svg>
+);
+
+export const IconRedo = () => (
+  <Svg>
+    <path d="M11 3l3.5 3.5L11 10" fill="none" stroke="#2f5fa8" strokeWidth="1.6" shapeRendering="geometricPrecision" />
+    <path d="M14 6.5H6.5a4 4 0 0 0 0 8H10" fill="none" stroke="#2f5fa8" strokeWidth="1.6" shapeRendering="geometricPrecision" />
+  </Svg>
+);
