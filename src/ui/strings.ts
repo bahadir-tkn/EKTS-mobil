@@ -815,6 +815,7 @@ export const MOBILE: Record<string, { tr: string; en: string }> = {
   noRelays: { tr: 'Devrede kontaktör veya zaman rölesi yok.', en: 'There is no contactor or time relay in the circuit.' },
   saveImage: { tr: 'Resim Olarak Kaydet', en: 'Save as Image' },
   fileType: { tr: 'Kayıt türü', en: 'Save as type' },
+  splashNote: { tr: 'EKTS Mobil: masaüstü programın telefon ve tablet uyarlaması. Kapatmak için dokunun.', en: 'EKTS Mobil: the desktop program adapted for phones and tablets. Tap to close.' },
   pages: { tr: 'sayfa', en: 'pages' },
   paper: { tr: 'Kağıt', en: 'Paper' },
   orientation: { tr: 'Yön', en: 'Orientation' },
