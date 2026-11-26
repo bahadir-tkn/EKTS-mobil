@@ -1,17 +1,16 @@
 // EKTS Mobil service worker: lets the installed app open and run offline.
 // Pages are fetched network-first (so updates arrive when online) and fall back
 // to the cache; static files are served from the cache and refreshed in the background.
-const CACHE = 'ekts-mobil-v1';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+// The build replaces these two lines with a version and the list of every
+// file in the site (app, example circuits, help pages, icons), so each
+// deploy installs a fresh worker, everything works offline after the first
+// visit, and the old version's cache is dropped.
+const CACHE = 'ekts-mobil-dev';
+const PRECACHE = ['./', './index.html'];
 
-// Precache the shell plus the hashed JS/CSS bundles that index.html references,
-// so the app works offline right after the first visit.
 async function precache() {
   const cache = await caches.open(CACHE);
-  await cache.addAll(SHELL);
-  const html = await (await cache.match('./index.html')).text();
-  const assets = [...html.matchAll(/(?:src|href)="(\.\/assets\/[^"]+)"/g)].map((m) => m[1]);
-  await cache.addAll(assets);
+  await cache.addAll(PRECACHE);
 }
 
 self.addEventListener('install', (event) => {
@@ -38,20 +37,25 @@ self.addEventListener('fetch', (event) => {
   if (!cacheable) return;
 
   if (req.mode === 'navigate') {
+    // The app itself and the help pages: network first, cache when offline.
+    const scope = new URL('./', self.location.href).pathname;
+    const isApp = url.pathname === scope || url.pathname === scope + 'index.html';
     event.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('./index.html', copy));
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(isApp ? './index.html' : req, copy));
+          }
           return res;
         })
-        .catch(() => caches.match('./index.html')),
+        .catch(async () => (await caches.match(isApp ? './index.html' : req, { ignoreVary: true })) || caches.match('./index.html', { ignoreVary: true })),
     );
     return;
   }
 
   event.respondWith(
-    caches.match(req).then((cached) => {
+    caches.match(req, { ignoreVary: true }).then((cached) => {
       const network = fetch(req)
         .then((res) => {
           if (res && (res.ok || res.type === 'opaque')) {

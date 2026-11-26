@@ -13,6 +13,7 @@ import { MenuBar, StatusBar, Toolbar, type Menu, type MenuItem } from './ui/Chro
 import { ChoiceDialog, ContextMenu, MessageBox, PromptDialog } from './ui/Dialogs';
 import { Library } from './ui/Library';
 import { Help } from './ui/Help';
+import { Splash } from './ui/Splash';
 import { loadPageSettings, PageSetupDialog, PrintPreview, savePageSettings, type PageSettings } from './ui/Printing';
 import { exportImage, IMAGE_FORMATS, type ImageFormat } from './ui/exportImage';
 import { caption, LANGS, type Lang } from './ui/strings';
@@ -97,6 +98,8 @@ export default function App() {
   const [preview, setPreview] = useState(false);
   const [pageSetup, setPageSetup] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  // frmScreen shows while the program starts, until it is tapped.
+  const [splash, setSplash] = useState(true);
   /** mnuFilePrintPrev_Click: deselect, then show the preview. */
   const openPreview = () => {
     doc.deselect(null);
@@ -377,6 +380,31 @@ export default function App() {
 
   // ---- running ---------------------------------------------------------------------
 
+  // Keep the screen on while the circuit runs, so a timer or a motor being
+  // watched does not dim away (mobile addition; re-taken when the page returns).
+  useEffect(() => {
+    if (mode !== 'run' || !('wakeLock' in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    let live = true;
+    const take = () => {
+      if (document.visibilityState !== 'visible') return;
+      navigator.wakeLock
+        .request('screen')
+        .then((l) => {
+          if (live) lock = l;
+          else l.release().catch(() => {});
+        })
+        .catch(() => {});
+    };
+    take();
+    document.addEventListener('visibilitychange', take);
+    return () => {
+      live = false;
+      document.removeEventListener('visibilitychange', take);
+      lock?.release().catch(() => {});
+    };
+  }, [mode]);
+
   const stopRun = useCallback(() => {
     sim.current?.stop();
     sim.current = null;
@@ -566,19 +594,7 @@ export default function App() {
         { label: t('mnuHelpWeb'), onClick: () => window.open('https://veppa.com/ekts/elektrik-kumanda-teknikleri-simulatoru-ekts-kilavuzu/', '_blank', 'noopener') },
         {
           label: t('mnuHelpAbout').replace('ESCS', 'EKTS'),
-          onClick: () =>
-            setDialog({
-              kind: 'message',
-              title: t('mnuHelpAbout').replace('ESCS', 'EKTS'),
-              icon: 'info',
-              text:
-                'Elektrik Kumanda Teknikleri Simülatörü (EKTS) 1.0.3\n' +
-                'Programlayan ve geliştiren: Vepa HALLIYEV\n' +
-                'Danışman: Yrd. Doç. Dr. Hasan ERDAL\n' +
-                'Marmara Üniversitesi, 2005\n\n' +
-                'EKTS Mobil: masaüstü programın telefon ve tablet için uyarlaması.',
-              buttons: [{ label: t('ok'), primary: true, onClick: () => setDialog(null) }],
-            }),
+          onClick: () => setSplash(true),
         },
       ],
     },
@@ -677,6 +693,7 @@ export default function App() {
         {preview && !running && (
           <PrintPreview doc={doc} lang={lang} settings={pageSettings} onSettings={() => setPageSetup(true)} onClose={() => setPreview(false)} />
         )}
+        {splash && <Splash note={t('splashNote')} onClose={() => setSplash(false)} />}
         {helpOpen && <Help lang={lang} onClose={() => setHelpOpen(false)} />}
         {pageSetup && (
           <PageSetupDialog
