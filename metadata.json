@@ -1,8 +1,0 @@
-{
-  "name": "EKTS Mobil",
-  "description": "Elektrik Kumanda Teknikleri Simülatörü — Mobil öncelikli, dokunmatik uyumlu interaktif IEC şema çizim ve 3 fazlı kumanda devresi simülasyon uygulaması.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
