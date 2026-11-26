@@ -42,6 +42,7 @@ export function PromptDialog({
   label,
   initial,
   numeric,
+  multiline,
   okLabel,
   cancelLabel,
   onOk,
@@ -51,13 +52,14 @@ export function PromptDialog({
   label: string;
   initial: string;
   numeric?: boolean;
+  multiline?: boolean;
   okLabel: string;
   cancelLabel: string;
   onOk: (v: string) => void;
   onCancel: () => void;
 }) {
   const [v, setV] = useState(initial);
-  const ref = useRef<HTMLInputElement>(null);
+  const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   useEffect(() => {
     ref.current?.select();
   }, []);
@@ -73,6 +75,9 @@ export function PromptDialog({
         <div className="dialog-title">{title}</div>
         <label className="dialog-field">
           <span>{label}</span>
+          {multiline ? (
+            <textarea ref={ref} autoFocus rows={5} value={v} spellCheck={false} onChange={(e) => setV(e.target.value)} />
+          ) : (
           <input
             ref={ref}
             autoFocus
@@ -83,6 +88,7 @@ export function PromptDialog({
             spellCheck={false}
             onChange={(e) => setV(numeric ? e.target.value.replace(/\D/g, '') : e.target.value)}
           />
+          )}
         </label>
         <div className="dialog-buttons">
           <button type="submit" className="btn primary">

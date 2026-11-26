@@ -147,11 +147,38 @@ export function Drawing(p: DrawingProps) {
           )}
         </React.Fragment>
       ))}
-      {doc.texts.map((t, i) => (
-        <foreignObject key={`x${i}`} x={t.location.x} y={t.location.y} width={Math.max(t.size.width, 200)} height={Math.max(t.size.height, 40)}>
-          <div style={{ fontFamily: FONT_FAMILY, fontSize: ELEMENT_FONT_SIZE, whiteSpace: 'pre-wrap', color: '#000' }}>{t.text}</div>
-        </foreignObject>
-      ))}
+      {doc.texts.map((t, i) => {
+        const w = t.size.width || 100;
+        const h = t.size.height || 23;
+        return (
+          <g key={`x${i}`}>
+            {t.selected && <rect x={t.location.x} y={t.location.y} width={w} height={h} fill="rgb(255,255,192)" />}
+            <foreignObject x={t.location.x} y={t.location.y} width={w} height={h}>
+              <div
+                style={{
+                  fontFamily: FONT_FAMILY,
+                  fontSize: ELEMENT_FONT_SIZE,
+                  lineHeight: '13px',
+                  whiteSpace: 'pre-wrap',
+                  overflowWrap: 'break-word',
+                  overflow: 'hidden',
+                  width: w,
+                  height: h,
+                  color: '#000',
+                }}
+              >
+                {t.text}
+              </div>
+            </foreignObject>
+            {t.selected && (
+              <>
+                <rect x={t.location.x + 0.5} y={t.location.y + 0.5} width={w - 1} height={h - 1} fill="none" stroke="#000" strokeWidth={1} />
+                <rect x={t.location.x + w - 6} y={t.location.y + h - 6} width={6} height={6} fill="#000" />
+              </>
+            )}
+          </g>
+        );
+      })}
       {p.hoverPin && <circle cx={p.hoverPin.x + 0.5} cy={p.hoverPin.y + 0.5} r={4} fill={RED} />}
       {p.wire && (
         <>

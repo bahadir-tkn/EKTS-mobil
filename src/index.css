@@ -499,6 +499,7 @@ button {
   padding: 14px;
 }
 
+.dialog-field textarea,
 .dialog-field input {
   font: inherit;
   font-size: 16px;
@@ -506,6 +507,7 @@ button {
   border: 1px solid var(--border-dark);
   background: #fff;
   border-radius: 0;
+  resize: vertical;
 }
 
 .dialog-list {

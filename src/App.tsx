@@ -3,7 +3,7 @@
  * and status bar, laid out like the desktop program on a phone screen.
  */
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { CircuitDocument, DElement, LAMP_COLORS, isContact, isTimer } from './ekts/document';
+import { CircuitDocument, DElement, LAMP_COLORS, isContact, isTimer, type DText } from './ekts/document';
 import { Simulator, SIM_MESSAGES, type SimError, type SimSnapshot } from './ekts/simulator';
 import { parseEscFile, EscFormatError, type EscCircuit } from './esc/escFile';
 import { writeEscFile } from './esc/escWriter';
@@ -21,7 +21,7 @@ const AUTOSAVE_KEY = 'ekts-mobil:autosave:v2';
 
 type Dialog =
   | { kind: 'message'; title: string; text: string; icon?: 'error' | 'question' | 'info'; buttons: { label: string; onClick: () => void; primary?: boolean }[] }
-  | { kind: 'prompt'; title: string; label: string; initial: string; numeric?: boolean; onOk: (v: string) => void }
+  | { kind: 'prompt'; title: string; label: string; initial: string; numeric?: boolean; multiline?: boolean; onOk: (v: string) => void }
   | { kind: 'choice'; title: string; options: string[]; current: string; onPick: (v: string) => void }
   | { kind: 'context'; x: number; y: number; items: MenuItem[] };
 
@@ -241,6 +241,43 @@ export default function App() {
     });
   };
 
+  const editText = (tx: DText) =>
+    setDialog({
+      kind: 'prompt',
+      title: t('cmtEdit'),
+      label: '',
+      initial: tx.text,
+      multiline: true,
+      onOk: (v) => {
+        setDialog(null);
+        doc.setText(tx, v, t('tbText'));
+        changed();
+      },
+    });
+
+  const textMenu = (tx: DText, x: number, y: number) =>
+    setDialog({
+      kind: 'context',
+      x,
+      y,
+      items: [
+        { label: t('cmtEdit'), onClick: () => editText(tx) },
+        {
+          label: t('cmtRemove'),
+          onClick: () => {
+            doc.removeText(tx);
+            changed();
+          },
+        },
+      ],
+    });
+
+  const addText = () => {
+    const tx = doc.addText(t('tbText'), canvas.current?.viewOrigin() ?? { x: 0, y: 0 });
+    doc.selectText(tx);
+    changed();
+  };
+
   const contextMenu = (el: DElement, x: number, y: number) => {
     const items: MenuItem[] = [
       {
@@ -403,6 +440,7 @@ export default function App() {
         { label: t('undo'), onClick: undo, disabled: !history.current.canUndo },
         { label: t('redo'), onClick: redo, disabled: !history.current.canRedo },
         'sep',
+        { label: t('mnuEditAddText'), onClick: addText },
         {
           label: t('mnuEditSelectAll'),
           onClick: () => {
@@ -520,6 +558,8 @@ export default function App() {
             onRelease={(i, latch) => sim.current?.pointerUp(i, latch)}
             onContextMenu={contextMenu}
             onEditLabel={editLabel}
+            onEditText={editText}
+            onTextMenu={textMenu}
             onZoom={setZoom}
           />
         </div>
@@ -569,6 +609,7 @@ export default function App() {
           label={dialog.label}
           initial={dialog.initial}
           numeric={dialog.numeric}
+          multiline={dialog.multiline}
           okLabel={t('ok')}
           cancelLabel={t('cancel')}
           onOk={dialog.onOk}
